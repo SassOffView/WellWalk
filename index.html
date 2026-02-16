@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MindStep">
+<meta name="theme-color" content="#00d4ff">
+<meta name="description" content="Unisci corpo e mente. Cammina, rifletti, cresci ogni giorno.">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png">
+<title>MindStep - Walk, Think, Grow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+--primary:#00d4ff;--primary-dark:#00b4d8;--secondary:#5ce1e6;--accent:#3b4fa0;
+--bg:#ffffff;--bg-secondary:#f5f7fa;--text:#0f1419;--text-secondary:#4a5568;--border:#e5e7eb;
+--shadow:0 2px 8px rgba(15,20,25,.08);--shadow-md:0 4px 16px rgba(15,20,25,.12);
+--radius-sm:8px;--radius-md:12px;--radius-lg:16px;--radius-xl:24px;
+--transition:250ms cubic-bezier(.4,0,.2,1);
+--gradient:linear-gradient(135deg,var(--primary),var(--secondary))
+}
+[data-theme=dark]{
+--primary:#5ce1e6;--primary-dark:#33ddff;--secondary:#00d4ff;--accent:#7fecf0;
+--bg:#0a1128;--bg-secondary:#1a2357;--text:#ffffff;--text-secondary:#8b92a3;--border:#2b3a7f;
+--shadow:0 2px 8px rgba(0,0,0,.3);--shadow-md:0 4px 16px rgba(0,0,0,.4)
+}
+[data-theme=auto]{color-scheme:light dark}
+@media(prefers-color-scheme:dark){[data-theme=auto]{
+--primary:#5ce1e6;--bg:#0a1128;--bg-secondary:#1a2357;--text:#ffffff;--text-secondary:#8b92a3;--border:#2b3a7f
+}}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{font-family:Inter,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.5;overflow-x:hidden;padding-top:140px}
+.screen{display:none;min-height:100vh;padding:16px 20px 100px}
+.screen.active{display:block;animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.container{max-width:600px;margin:0 auto}
+
+/* Header Fixed */
+.app-header{position:fixed;top:0;left:0;right:0;background:var(--bg);border-bottom:1px solid var(--border);z-index:1000;box-shadow:var(--shadow)}
+.header-top{padding:16px 20px;display:flex;justify-content:space-between;align-items:center;max-width:600px;margin:0 auto}
+.header-left{display:flex;align-items:center;gap:12px}
+.logo-mini{width:32px;height:32px}
+.app-title{font-size:20px;font-weight:800;background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.header-right{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-secondary)}
+.weather-mini{display:flex;align-items:center;gap:6px}
+.streak-mini{display:flex;align-items:center;gap:4px;background:rgba(var(--primary-rgb),.1);padding:4px 10px;border-radius:999px;font-weight:600;font-size:13px;color:var(--primary)}
+
+/* Menu Orizzontale */
+.nav-menu{display:flex;justify-content:space-around;padding:8px 0;background:var(--bg);max-width:600px;margin:0 auto}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;cursor:pointer;transition:var(--transition);border-radius:var(--radius-md);color:var(--text-secondary)}
+.nav-item:hover,.nav-item.active{color:var(--primary);background:rgba(var(--primary-rgb),.08)}
+.nav-icon{width:24px;height:24px;stroke-width:2}
+.nav-label{font-size:11px;font-weight:600}
+
+/* Cards */
+.card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;margin-bottom:16px;box-shadow:var(--shadow);transition:var(--transition)}
+[data-theme=dark] .card{background:var(--bg-secondary)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;cursor:pointer;user-select:none}
+.card-title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700}
+.card-icon{width:22px;height:22px;color:var(--primary)}
+.expand-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(var(--primary-rgb),.1);transition:var(--transition)}
+.expand-btn.rotated{transform:rotate(180deg)}
+.expandable{max-height:0;overflow:hidden;transition:max-height .4s cubic-bezier(.4,0,.2,1)}
+.expandable.expanded{max-height:3000px}
+
+/* Timer Circular */
+.timer-container{display:flex;flex-direction:column;align-items:center;gap:20px;padding:24px 0}
+.timer-circle{position:relative;width:200px;height:200px}
+.timer-ring{transform:rotate(-90deg)}
+.timer-track{fill:none;stroke:var(--border);stroke-width:8}
+.timer-progress{fill:none;stroke:url(#timer-gradient);stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset .3s}
+.timer-display{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center}
+.timer-time{font-size:32px;font-weight:800;font-family:'SF Mono',Monaco,monospace;color:var(--primary);letter-spacing:-.02em}
+.timer-label{font-size:12px;color:var(--text-secondary);margin-top:4px}
+.timer-dots{display:flex;gap:6px;justify-content:center;margin-top:12px}
+.timer-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:var(--transition)}
+.timer-dot.active{background:var(--primary)}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:20px 0}
+.stat-item{text-align:center;padding:16px;background:var(--bg-secondary);border-radius:var(--radius-md);border:1px solid var(--border)}
+.stat-value{font-size:24px;font-weight:800;color:var(--primary)}
+.stat-label{font-size:11px;color:var(--text-secondary);margin-top:4px;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+
+/* Buttons */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 24px;border:none;border-radius:var(--radius-md);font:inherit;font-weight:700;cursor:pointer;transition:var(--transition);font-size:15px}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--gradient);color:#fff;box-shadow:0 2px 0 var(--primary-dark),var(--shadow-md)}
+.btn-secondary{background:rgba(var(--primary-rgb),.1);color:var(--primary);border:2px solid var(--primary)}
+.btn-outline{background:transparent;border:2px solid var(--border);color:var(--text)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-group{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+
+/* Routine Items */
+.routine-list{display:flex;flex-direction:column;gap:10px}
+.routine-item{display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:var(--transition)}
+.routine-item:active{transform:scale(.98)}
+.routine-item.completed{background:rgba(92,225,230,.1);border-color:var(--secondary)}
+.routine-checkbox{width:22px;height:22px;cursor:pointer;accent-color:var(--secondary)}
+.routine-label{flex:1;font-size:15px;font-weight:500}
+.routine-item.completed .routine-label{text-decoration:line-through;opacity:.6}
+
+/* Progress Bar */
+.progress-wrapper{margin:20px 0}
+.progress-bar-container{background:var(--bg-secondary);height:12px;border-radius:999px;overflow:hidden;border:1px solid var(--border);position:relative}
+.progress-bar{height:100%;background:var(--gradient);border-radius:999px;transition:width .6s cubic-bezier(.4,0,.2,1);position:relative}
+.progress-bar::after{content:'';position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);animation:shimmer 2s infinite}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.progress-label{text-align:center;margin-top:8px;font-size:14px;font-weight:600}
+.progress-pct{font-size:20px;font-weight:800;color:var(--primary)}
+
+/* Badges */
+.badges-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-height:400px;overflow-y:auto;padding-right:4px}
+.badge{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;cursor:pointer;transition:var(--transition);position:relative}
+.badge:active{transform:scale(.95)}
+.badge.unlocked{background:linear-gradient(135deg,#fff9e6,#fff0cc);border-color:#ffdc73;box-shadow:0 4px 12px rgba(255,220,115,.3)}
+[data-theme=dark] .badge.unlocked{background:linear-gradient(135deg,#4a3c1f,#6b5328);border-color:#a8824c}
+.badge-icon{font-size:32px;filter:grayscale(100%);transition:filter .3s}
+.badge.unlocked .badge-icon{filter:grayscale(0%)}
+.badge-name{font-size:10px;font-weight:700;text-align:center;margin-top:6px;color:var(--text-secondary)}
+
+/* Week Grid */
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:16px}
+.day-cell{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:600;cursor:pointer;transition:var(--transition)}
+.day-cell:hover{background:rgba(var(--primary-rgb),.1)}
+.day-cell.active{background:var(--gradient);border-color:var(--secondary);color:#fff;box-shadow:var(--shadow-md)}
+.day-name{font-size:10px;opacity:.7;margin-bottom:2px}
+
+/* Modals */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(10px);z-index:2000;align-items:center;justify-content:center;padding:20px}
+.modal.active{display:flex;animation:fadeIn .3s}
+.modal-content{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xl);padding:28px;max-width:440px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+[data-theme=dark] .modal-content{background:var(--bg-secondary)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-title{font-size:22px;font-weight:800}
+.modal-close{width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(var(--primary-rgb),.1);cursor:pointer;transition:var(--transition);border:none}
+.modal-close:hover{background:rgba(var(--primary-rgb),.2)}
+
+/* Forms */
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:8px}
+input,select,textarea{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius-md);font:inherit;background:var(--bg);color:var(--text);transition:var(--transition);font-size:15px}
+input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px rgba(0,212,255,.1)}
+textarea{resize:vertical;min-height:120px}
+
+/* Settings */
+.settings-list{display:flex;flex-direction:column;gap:8px}
+.setting-item{display:flex;align-items:center;justify-content:space-between;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:var(--transition)}
+.setting-item:active{transform:scale(.98)}
+.setting-left{display:flex;align-items:center;gap:12px}
+.setting-icon{width:20px;height:20px}
+
+/* Toggle 3 states */
+.theme-toggle{display:flex;gap:4px;background:var(--bg-secondary);padding:4px;border-radius:999px;border:1px solid var(--border)}
+.theme-option{padding:6px 14px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:600;transition:var(--transition);color:var(--text-secondary)}
+.theme-option.active{background:var(--primary);color:#fff}
+
+/* AI Export */
+.ai-options{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:16px 0}
+.ai-btn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:var(--transition);text-decoration:none;color:var(--text)}
+.ai-btn:hover{border-color:var(--primary);transform:translateY(-2px)}
+.ai-icon{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px}
+.ai-name{font-size:13px;font-weight:700}
+
+/* Notifications */
+.notif-toast{position:fixed;top:160px;left:50%;transform:translateX(-50%);background:var(--bg);border:1px solid var(--primary);border-radius:var(--radius-lg);padding:16px 20px;box-shadow:var(--shadow-md);z-index:3000;animation:slideDown .3s;max-width:90%;display:flex;align-items:center;gap:12px}
+@keyframes slideDown{from{transform:translate(-50%,-100%);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+.notif-icon{font-size:24px}
+.notif-text{font-size:14px;font-weight:600}
+
+/* FAB */
+.fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;background:var(--gradient);color:#fff;border:none;border-radius:50%;box-shadow:var(--shadow-md);cursor:pointer;z-index:999;transition:var(--transition)}
+.fab:active{transform:translateY(2px) scale(.95)}
+
+.hidden{display:none!important}
+.version{position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,.6);color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;z-index:999;font-weight:600}
+@media(max-width:640px){
+body{padding-top:130px}
+.header-top{padding:12px 16px}
+.app-title{font-size:18px}
+.screen{padding:12px 16px 80px}
+.timer-circle{width:180px;height:180px}
+.timer-time{font-size:28px}
+.badges-grid{grid-template-columns:repeat(3,1fr)}
+.fab{bottom:20px;right:20px;width:52px;height:52px}
+}
+</style>
+</head>
+<body>
+<div class="version">v5.0</div>
+
+<!-- Header Fixed -->
+<header class="app-header">
+<div class="header-top">
+<div class="header-left">
+<svg class="logo-mini" viewBox="0 0 32 32"><path d="M 6 16 Q 10 12, 14 16 T 22 16 T 30 16" stroke="url(#g1)" stroke-width="2.5" fill="none" stroke-linecap="round"/><path d="M 8 22 Q 14 19, 20 22 Q 24 24, 28 22" stroke="url(#g1)" stroke-width="2" fill="none" stroke-dasharray="3,3"/><defs><linearGradient id="g1"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#5ce1e6"/></linearGradient></defs></svg>
+<span class="app-title" id="appTitle">MindStep</span>
+</div>
+<div class="header-right">
+<div class="weather-mini" id="weatherMini"><span id="weatherIcon">⛅</span><span id="weatherTemp">--°</span></div>
+<div class="streak-mini"><span>🔥</span><span id="streakNum">0</span></div>
+</div>
+</div>
+<nav class="nav-menu">
+<div class="nav-item active" onclick="showTab('home')" id="navHome">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+<span class="nav-label">Home</span>
+</div>
+<div class="nav-item" onclick="showTab('calendar')" id="navCalendar">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+<span class="nav-label">Storico</span>
+</div>
+<div class="nav-item" onclick="showTab('stats')" id="navStats">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+<span class="nav-label">Dati</span>
+</div>
+<div class="nav-item" onclick="showTab('achievements')" id="navAchievements">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+<span class="nav-label">Traguardi</span>
+</div>
+<div class="nav-item" onclick="showTab('settings')" id="navSettings">
+<svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v10M23 12h-6m-10 0H1"/></svg>
+<span class="nav-label">Altro</span>
+</div>
+</nav>
+</header>
+
+<!-- Welcome Screen -->
+<div id="screen-welcome" class="screen">
+<div class="container">
+<svg style="width:140px;height:140px;margin:32px auto;display:block" viewBox="0 0 120 120"><defs><linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="50%" stop-color="#5ce1e6"/><stop offset="100%" stop-color="#00b4b4"/></linearGradient></defs><path d="M 25 60 Q 35 50, 45 60 T 65 60 T 85 60" stroke="url(#g2)" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M 30 75 Q 50 65, 70 75 Q 80 80, 95 75" stroke="url(#g2)" stroke-width="3" fill="none" stroke-dasharray="5,5"/><path d="M 95 55 Q 105 40, 110 50" stroke="url(#g2)" stroke-width="4" fill="none"/></svg>
+<h1 style="text-align:center;font-size:2.5rem;margin-bottom:12px">MindStep</h1>
+<p style="text-align:center;color:var(--text-secondary);margin-bottom:40px;line-height:1.6">Unisci corpo e mente.<br>Cammina, rifletti, cresci ogni giorno.</p>
+<div class="card">
+<div class="form-group"><label class="form-label">Nome</label><input type="text" id="userName" placeholder="Come ti chiami?" maxlength="20"></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+<div class="form-group"><label class="form-label">Età</label><input type="number" id="userAge" placeholder="25" min="1" max="120"></div>
+<div class="form-group"><label class="form-label">Sesso</label><select id="userGender"><option value="">Seleziona</option><option value="M">Maschio</option><option value="F">Femmina</option><option value="A">Altro</option></select></div>
+</div>
+<button class="btn btn-primary" onclick="saveProfile()" style="width:100%;margin-top:20px"><span>Inizia il Viaggio</span></button>
+</div></div></div>
+
+<!-- Routines Setup -->
+<div id="screen-routines" class="screen">
+<div class="container">
+<h1 style="text-align:center;margin-bottom:12px">Le Tue Routine</h1>
+<p style="text-align:center;color:var(--text-secondary);margin-bottom:32px">Crea fino a 10 abitudini quotidiane da tracciare.</p>
+<div class="card">
+<div id="routineList"></div>
+<div style="text-align:center;margin:20px 0;font-weight:600"><span id="routineCount" style="font-size:24px;color:var(--primary)">0</span> / 10</div>
+<button class="btn btn-secondary" onclick="addRoutineSetup()" id="addRoutineBtn" style="width:100%"><span>+ Aggiungi Routine</span></button>
+<button class="btn btn-primary" onclick="saveRoutines()" style="width:100%;margin-top:16px"><span>Continua</span></button>
+</div></div></div>
+
+<!-- Main App -->
+<div id="screen-main" class="screen">
+<div class="container">
+
+<!-- Quote Card -->
+<div class="card" style="background:linear-gradient(135deg,#fff9e6,#fff0cc);border-color:#ffdc73" data-theme-style="quote">
+<p id="quoteText" style="font-style:italic;color:#8b6914;margin-bottom:12px;line-height:1.7"></p>
+<div id="quoteAuthor" style="font-weight:700;color:#a87d1a;text-align:right;font-size:14px"></div>
+</div>
+
+<!-- Routine Card -->
+<div class="card">
+<div class="card-header" onclick="toggleSection('routines')">
+<h3 class="card-title"><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 11l3 3L22 4"/></svg>Routine <span id="routineSummary" style="color:var(--secondary);margin-left:8px">0/0</span></h3>
+<div class="expand-btn" id="routinesExpand"><svg style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+</div>
+<div class="expandable expanded" id="routinesContent">
+<div class="progress-wrapper">
+<div class="progress-bar-container"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+<div class="progress-label"><span class="progress-pct" id="progressPct">0%</span> Completato</div>
+</div>
+<div class="routine-list" id="routineChecklist"></div>
+</div>
+</div>
+
+<!-- Walk Card -->
+<div class="card">
+<h3 class="card-title" style="margin-bottom:20px"><svg class="card-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7"/></svg>Camminata</h3>
+<div class="timer-container">
+<div class="timer-circle">
+<svg class="timer-ring" viewBox="0 0 200 200">
+<defs><linearGradient id="timer-gradient" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#5ce1e6"/></linearGradient></defs>
+<circle class="timer-track" cx="100" cy="100" r="92"/>
+<circle class="timer-progress" id="timerProgress" cx="100" cy="100" r="92" stroke-dasharray="578" stroke-dashoffset="578"/>
+</svg>
+<div class="timer-display">
+<div class="timer-time" id="timerDisplay">00:00:00</div>
+<div class="timer-label">tempo</div>
+</div>
+</div>
+<div class="timer-dots"><span class="timer-dot active"></span><span class="timer-dot"></span><span class="timer-dot"></span><span class="timer-dot"></span><span class="timer-dot"></span></div>
+</div>
+<div class="stats-grid">
+<div class="stat-item"><div class="stat-value" id="distanceDisplay">0.0</div><div class="stat-label">km</div></div>
+<div class="stat-item"><div class="stat-value" id="speedDisplay">0.0</div><div class="stat-label">km/h</div></div>
+<div class="stat-item"><div class="stat-value" id="caloriesDisplay">0</div><div class="stat-label">kcal</div></div>
+</div>
+<button class="btn btn-primary" onclick="toggleWalk()" id="walkBtn" style="width:100%">
+<svg id="walkBtnIcon" style="width:20px;height:20px" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
+<span id="walkBtnText">Inizia</span>
+</button>
+</div>
+
+<!-- Brainstorm Card -->
+<div class="card">
+<div class="card-header" onclick="toggleSection('brainstorm')">
+<h3 class="card-title"><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/></svg>Brainstorming</h3>
+<div class="expand-btn" id="brainstormExpand"><svg style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+</div>
+<div class="expandable" id="brainstormContent">
+<div id="recordingIndicator" class="hidden" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;background:rgba(233,118,118,.1);border:1px solid var(--danger);border-radius:var(--radius-md);color:#e97676;margin-bottom:12px"><span style="width:10px;height:10px;background:#e97676;border-radius:50%;animation:pulse 1.5s infinite"></span><span style="font-weight:600;font-size:14px">Registrazione in corso...</span></div>
+<div class="btn-group">
+<button class="btn btn-secondary" onclick="toggleRecording()" id="recordBtn"><span id="recordBtnText">🎙️ Registra</span></button>
+<button class="btn btn-outline" onclick="showExportOptions()"><span>📤 Esporta</span></button>
+</div>
+<textarea id="brainstormNotes" placeholder="Scrivi o registra i tuoi pensieri..." onchange="saveBrainstorm()" style="margin-top:12px"></textarea>
+</div>
+</div>
+
+<!-- Music Card -->
+<div class="card">
+<div class="card-header" onclick="toggleSection('music')">
+<h3 class="card-title"><svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/></svg>Musica</h3>
+<div class="expand-btn" id="musicExpand"><svg style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+</div>
+<div class="expandable" id="musicContent">
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px">
+<a href="https://open.spotify.com" target="_blank" class="ai-btn" style="padding:12px"><span style="font-size:28px">🎵</span><span style="font-size:12px">Spotify</span></a>
+<a href="https://music.youtube.com" target="_blank" class="ai-btn" style="padding:12px"><span style="font-size:28px">▶️</span><span style="font-size:12px">YouTube</span></a>
+<a href="https://music.apple.com" target="_blank" class="ai-btn" style="padding:12px"><span style="font-size:28px">🎧</span><span style="font-size:12px">Apple</span></a>
+</div>
+<div class="form-group"><label class="form-label">Link Personalizzato</label><input type="url" id="customMusic" placeholder="Incolla URL playlist..."><button class="btn btn-secondary" onclick="openCustomMusic()" style="width:100%;margin-top:12px"><span>▶️ Apri</span></button></div>
+</div>
+</div>
+
+</div>
+</div>
+
+<!-- Calendar Tab -->
+<div id="screen-calendar" class="screen"><div class="container">
+<h2 style="margin-bottom:20px">Storico Attività</h2>
+<div class="card"><div id="calendarView"></div></div>
+</div></div>
+
+<!-- Stats Tab -->
+<div id="screen-stats" class="screen"><div class="container">
+<h2 style="margin-bottom:20px">Dati Settimanali</h2>
+<div class="card">
+<div class="week-grid" id="weekGrid"></div>
+<div class="stats-grid" style="margin-top:20px">
+<div class="stat-item"><div class="stat-value" id="activeDays">0/7</div><div class="stat-label">Giorni</div></div>
+<div class="stat-item"><div class="stat-value" id="totalKm">0</div><div class="stat-label">KM</div></div>
+<div class="stat-item"><div class="stat-value" id="completedRoutines">0%</div><div class="stat-label">Routine</div></div>
+</div></div>
+</div></div>
+
+<!-- Achievements Tab -->
+<div id="screen-achievements" class="screen"><div class="container">
+<h2 style="margin-bottom:20px">I Tuoi Traguardi</h2>
+<div class="card"><div class="badges-grid" id="badgesGrid"></div></div>
+</div></div>
+
+<!-- Settings Tab -->
+<div id="screen-settings" class="screen"><div class="container">
+<h2 style="margin-bottom:20px">Impostazioni</h2>
+<div class="card">
+<div class="form-group"><label class="form-label">Tema</label>
+<div class="theme-toggle">
+<div class="theme-option" onclick="setTheme('light')" id="themeLight">Chiaro</div>
+<div class="theme-option active" onclick="setTheme('auto')" id="themeAuto">Auto</div>
+<div class="theme-option" onclick="setTheme('dark')" id="themeDark">Scuro</div>
+</div></div>
+<div class="settings-list" style="margin-top:20px">
+<div class="setting-item" onclick="editProfile()"><div class="setting-left"><svg class="setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="7" r="4"/></svg><span style="font-weight:600">Modifica Profilo</span></div></div>
+<div class="setting-item" onclick="editRoutines()"><div class="setting-left"><svg class="setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/></svg><span style="font-weight:600">Modifica Routine</span></div></div>
+<div class="setting-item" onclick="exportAllData()"><div class="setting-left"><svg class="setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5"/></svg><span style="font-weight:600">Esporta Tutti i Dati</span></div></div>
+<div class="setting-item" onclick="resetApp()" style="color:#e97676"><div class="setting-left"><svg class="setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 6h18"/></svg><span style="font-weight:600">Reset Applicazione</span></div></div>
+</div></div>
+</div></div>
+
+<!-- Export Modal -->
+<div id="exportModal" class="modal">
+<div class="modal-content">
+<div class="modal-header"><h3 class="modal-title">Esporta Note</h3><button class="modal-close" onclick="closeExportModal()"><svg style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<button class="btn btn-primary" onclick="exportAsText()" style="width:100%"><span>📝 Trascrizione (.txt)</span></button>
+<h4 style="margin:12px 0 4px;font-size:15px;font-weight:700">Invia ad AI:</h4>
+<div class="ai-options">
+<a href="#" onclick="sendToAI('claude')" class="ai-btn"><div class="ai-icon" style="background:linear-gradient(135deg,#D97757,#c56647)">🤖</div><div class="ai-name">Claude</div></a>
+<a href="#" onclick="sendToAI('chatgpt')" class="ai-btn"><div class="ai-icon" style="background:linear-gradient(135deg,#10a37f,#0d8b6a)">✨</div><div class="ai-name">ChatGPT</div></a>
+<a href="#" onclick="sendToAI('gemini')" class="ai-btn"><div class="ai-icon" style="background:linear-gradient(135deg,#4285f4,#3367d6)">💎</div><div class="ai-name">Gemini</div></a>
+<a href="#" onclick="sendToAI('copilot')" class="ai-btn"><div class="ai-icon" style="background:linear-gradient(135deg,#0078d4,#005a9e)">🚀</div><div class="ai-name">Copilot</div></a>
+</div>
+</div></div></div>
+
+<!-- Badge Detail Modal -->
+<div id="badgeModal" class="modal">
+<div class="modal-content">
+<div class="modal-header"><h3 class="modal-title">Traguardo</h3><button class="modal-close" onclick="closeBadgeModal()"><svg style="width:20px;height:20px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+<div style="text-align:center">
+<div id="badgeModalIcon" style="font-size:80px;margin:20px 0"></div>
+<h2 id="badgeModalTitle" style="font-size:24px;font-weight:800;margin-bottom:12px"></h2>
+<p id="badgeModalDesc" style="color:var(--text-secondary);line-height:1.6"></p>
+</div></div></div>
+
+<script>
+/* MindStep v5.0 - Production Ready */
+const APP_VERSION='5.0',WEATHER_API_KEY='';let currentDate=new Date(),routines=[],walkData={isActive:!1,isPaused:!1,startTime:null,elapsedTime:0,pausedTime:0,distance:0,positions:[],watchId:null},timerInterval=null,recognition=null,isRecording=!1,transcriptText='';const BADGES=[{id:'first_walk',name:'Primo Passo',icon:'🚶',req:1,type:'walks',desc:'Completa la tua prima camminata'},{id:'week_warrior',name:'Guerriero',icon:'⚔️',req:7,type:'streak',desc:'7 giorni consecutivi'},{id:'distance_10',name:'10km',icon:'🎯',req:10,type:'distance',desc:'10km totali'},{id:'routine_50',name:'A Metà',icon:'📊',req:1,type:'special',desc:'50% routine completate'},{id:'routine_100',name:'Perfetto',icon:'✨',req:1,type:'special',desc:'100% routine completate'},{id:'time_20',name:'20 minuti',icon:'⏱️',req:20,type:'walk_time',desc:'20 minuti di camminata'},{id:'time_40',name:'40 minuti',icon:'⌛',req:40,type:'walk_time',desc:'40 minuti di camminata'},{id:'first_note',name:'Primo Pensiero',icon:'💭',req:1,type:'brainstorm',desc:'Primo brainstorming salvato'}];const QUOTES=[{text:"Il successo è la somma di piccoli sforzi ripetuti.",author:"Robert Collier"},{text:"Non conta quante volte cadi, ma quante volte ti rialzi.",author:"Vince Lombardi"},{text:"Il corpo raggiunge ciò che la mente crede.",author:"Napoleon Hill"},{text:"L'unico modo per fare un ottimo lavoro è amare quello che fai.",author:"Steve Jobs"},{text:"La motivazione ti fa iniziare. L'abitudine ti fa continuare.",author:"Jim Ryun"}];function init(){checkVersion();const u=localStorage.getItem('mindstep_user');u?(routines=JSON.parse(localStorage.getItem('mindstep_routines')||'[]'),showScreen('screen-main'),loadMainScreen()):showScreen('screen-welcome');requestPermissions();loadWeather();registerSW()}function checkVersion(){localStorage.setItem('mindstep_version',APP_VERSION)}function registerSW(){'serviceWorker'in navigator&&navigator.serviceWorker.register('./service-worker.js').catch(e=>console.warn('SW:',e))}function requestPermissions(){'Notification'in window&&Notification.permission==='default'&&Notification.requestPermission()}function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'))}function showTab(tab){const map={home:'screen-main',calendar:'screen-calendar',stats:'screen-stats',achievements:'screen-achievements',settings:'screen-settings'};showScreen(map[tab]);document.getElementById('nav'+tab.charAt(0).toUpperCase()+tab.slice(1)).classList.add('active')}function saveProfile(){const n=document.getElementById('userName').value.trim();if(!n){alert('Inserisci il tuo nome');return}localStorage.setItem('mindstep_user',JSON.stringify({name:n,age:document.getElementById('userAge').value,gender:document.getElementById('userGender').value,createdAt:new Date().toISOString()}));showScreen('screen-routines');setTimeout(()=>addRoutineSetup(),100)}function addRoutineSetup(){if(routines.length>=10){alert('Massimo 10 routine');return}const item=document.createElement('div');item.style.cssText='display:flex;gap:12px;margin-bottom:10px;align-items:center';item.innerHTML=`<input type="text" placeholder="Es: Meditazione, Sport..." data-idx="${routines.length}" style="flex:1;padding:12px;border:1px solid var(--border);border-radius:var(--radius-md);font:inherit"><button onclick="this.parentElement.remove();routines.splice(${routines.length},1);document.getElementById('routineCount').textContent=routines.length" style="width:40px;height:40px;border-radius:50%;border:none;background:#e97676;color:#fff;cursor:pointer;font-size:18px">×</button>`;document.getElementById('routineList').appendChild(item);routines.push('');document.getElementById('routineCount').textContent=routines.length}function saveRoutines(){routines=Array.from(document.querySelectorAll('#routineList input')).map(i=>i.value.trim()).filter(v=>v);if(!routines.length){alert('Aggiungi almeno una routine');return}localStorage.setItem('mindstep_routines',JSON.stringify(routines));showScreen('screen-main');loadMainScreen()}function loadMainScreen(){const u=JSON.parse(localStorage.getItem('mindstep_user'));document.getElementById('appTitle').textContent=`Ciao, ${u.name}!`;updateQuote();loadRoutineChecklist();updateStreak();updateWeeklyAnalytics();updateBadges();loadQuotable()}async function loadQuotable(){try{const r=await fetch('https://api.quotable.io/random?tags=inspirational');if(r.ok){const d=await r.json();document.getElementById('quoteText').textContent=`"${d.content}"`;document.getElementById('quoteAuthor').textContent=d.author}}catch(e){console.warn('Quote:',e)}}function updateQuote(){const q=QUOTES[Math.floor(Math.random()*QUOTES.length)];document.getElementById('quoteText').textContent=`"${q.text}"`;document.getElementById('quoteAuthor').textContent=q.author}async function loadWeather(){if(!navigator.geolocation)return;try{const pos=await new Promise((res,rej)=>navigator.geolocation.getCurrentPosition(res,rej,{timeout:5000}));const{latitude:lat,longitude:lon}=pos.coords;const url=`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=DEMO_KEY&units=metric&lang=it`;const r=await fetch(url);if(!r.ok)return;const d=await r.json();const icons={'Clear':'☀️','Clouds':'☁️','Rain':'🌧️','Snow':'❄️','Drizzle':'🌦️'};document.getElementById('weatherIcon').textContent=icons[d.weather[0].main]||'⛅';document.getElementById('weatherTemp').textContent=Math.round(d.main.temp)+'°'}catch(e){console.warn('Weather:',e)}}function loadRoutineChecklist(){const list=document.getElementById('routineChecklist');list.innerHTML='';if(!routines.length){list.innerHTML='<p style="text-align:center;opacity:.5;padding:20px;font-size:14px">Vai in Altro → Modifica Routine</p>';return}const key=currentDate.toISOString().split('T')[0],data=getDayData(key);routines.forEach((r,i)=>{const item=document.createElement('div');item.className='routine-item'+(data.routines?.[i]?' completed':'');item.innerHTML=`<input type="checkbox" class="routine-checkbox" id="r${i}" ${data.routines?.[i]?'checked':''} onchange="saveRoutine(${i})"><label class="routine-label" for="r${i}">${r}</label>`;list.appendChild(item)});updateProgress()}function saveRoutine(i){const key=currentDate.toISOString().split('T')[0],cb=document.getElementById(`r${i}`);let d=getDayData(key);d.routines=d.routines||{};d.routines[i]=cb.checked;saveDayData(key,d);cb.parentElement.classList.toggle('completed',cb.checked);updateProgress();updateWeeklyAnalytics();checkMilestones('routine')}function updateProgress(){const cbs=document.querySelectorAll('.routine-checkbox'),total=cbs.length,done=Array.from(cbs).filter(c=>c.checked).length,pct=total>0?Math.round((done/total)*100):0;document.getElementById('routineSummary').textContent=`${done}/${total}`;document.getElementById('progressBar').style.width=pct+'%';document.getElementById('progressPct').textContent=pct+'%';if(pct===50)checkMilestones('routine_50');if(pct===100)checkMilestones('routine_100')}function toggleWalk(){walkData.isActive?(walkData.isPaused?resumeWalk():pauseWalk()):startWalk()}function startWalk(){walkData.isActive=!0;walkData.isPaused=!1;walkData.startTime=Date.now();walkData.elapsedTime=0;walkData.positions=[];walkData.distance=0;updateWalkBtn();timerInterval=setInterval(updateTimer,1000);if(navigator.geolocation){walkData.watchId=navigator.geolocation.watchPosition(pos=>{const n={lat:pos.coords.latitude,lng:pos.coords.longitude};if(walkData.positions.length>0){const l=walkData.positions[walkData.positions.length-1],d=calcDistance(l.lat,l.lng,n.lat,n.lng);if(d>0.005){walkData.distance+=d;document.getElementById('distanceDisplay').textContent=walkData.distance.toFixed(2)}}walkData.positions.push(n)},console.warn,{enableHighAccuracy:!0,maximumAge:1000})}}function pauseWalk(){walkData.isPaused=!0;walkData.pausedTime=Date.now();clearInterval(timerInterval);walkData.watchId&&(navigator.geolocation.clearWatch(walkData.watchId),walkData.watchId=null);updateWalkBtn()}function resumeWalk(){walkData.isPaused=!1;walkData.startTime+=Date.now()-walkData.pausedTime;updateWalkBtn();timerInterval=setInterval(updateTimer,1000);navigator.geolocation&&(walkData.watchId=navigator.geolocation.watchPosition(pos=>{const n={lat:pos.coords.latitude,lng:pos.coords.longitude};if(walkData.positions.length>0){const l=walkData.positions[walkData.positions.length-1],d=calcDistance(l.lat,l.lng,n.lat,n.lng);if(d>0.005){walkData.distance+=d;document.getElementById('distanceDisplay').textContent=walkData.distance.toFixed(2)}}walkData.positions.push(n)},console.warn,{enableHighAccuracy:!0}))}function updateWalkBtn(){const btn=document.getElementById('walkBtn'),icon=document.getElementById('walkBtnIcon'),text=document.getElementById('walkBtnText');if(!walkData.isActive){btn.className='btn btn-primary';icon.innerHTML='<path d="M5 3l14 9-14 9V3z"/>';text.textContent='Inizia'}else if(walkData.isPaused){btn.className='btn btn-primary';icon.innerHTML='<path d="M5 3l14 9-14 9V3z"/>';text.textContent='Riprendi'}else{btn.className='btn';btn.style.background='#e97676';icon.innerHTML='<rect x="6" y="6" width="4" height="12"/><rect x="14" y="6" width="4" height="12"/>';text.textContent='Pausa'}}function updateTimer(){walkData.elapsedTime=Date.now()-walkData.startTime;const t=Math.floor(walkData.elapsedTime/1000),h=Math.floor(t/3600),m=Math.floor((t%3600)/60),s=t%60;document.getElementById('timerDisplay').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;const prog=document.getElementById('timerProgress'),circ=578,elapsed_min=walkData.elapsedTime/60000,offset=circ-(circ*(Math.min(elapsed_min/60,1)));prog.style.strokeDashoffset=offset;if(walkData.distance>0&&walkData.elapsedTime>0){const hrs=walkData.elapsedTime/3600000;document.getElementById('speedDisplay').textContent=(walkData.distance/hrs).toFixed(1)}document.getElementById('caloriesDisplay').textContent=Math.round(walkData.distance*65);if(elapsed_min>=20)checkMilestones('time_20');if(elapsed_min>=40)checkMilestones('time_40')}function calcDistance(lat1,lon1,lat2,lon2){const R=6371,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180,a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}function toggleRecording(){isRecording?stopRecording():startRecording()}function startRecording(){if(!('webkitSpeechRecognition'in window)){alert('Trascrizione non supportata. Scrivi manualmente.');return}recognition=new webkitSpeechRecognition();recognition.continuous=!0;recognition.interimResults=!0;recognition.lang='it-IT';recognition.onstart=()=>{isRecording=!0;document.getElementById('recordBtn').className='btn';document.getElementById('recordBtn').style.background='#e97676';document.getElementById('recordBtnText').textContent='⏹️ Stop';document.getElementById('recordingIndicator').classList.remove('hidden')};recognition.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)transcriptText+=e.results[i][0].transcript+' ';else interim+=e.results[i][0].transcript}document.getElementById('brainstormNotes').value=transcriptText+interim};recognition.onerror=()=>stopRecording();recognition.start()}function stopRecording(){if(recognition){recognition.stop();recognition=null}isRecording=!1;document.getElementById('recordBtn').className='btn btn-secondary';document.getElementById('recordBtnText').textContent='🎙️ Registra';document.getElementById('recordingIndicator').classList.add('hidden');saveBrainstorm()}function saveBrainstorm(){const notes=document.getElementById('brainstormNotes').value,key=currentDate.toISOString().split('T')[0];let d=getDayData(key);d.brainstorm=notes;saveDayData(key,d);if(notes&&!d.firstBrainstorm){d.firstBrainstorm=!0;saveDayData(key,d);checkMilestones('brainstorm')}}function showExportOptions(){document.getElementById('exportModal').classList.add('active')}function closeExportModal(){document.getElementById('exportModal').classList.remove('active')}function exportAsText(){const notes=document.getElementById('brainstormNotes').value;if(!notes){alert('Nessuna nota da esportare');return}try{const blob=new Blob([notes],{type:'text/plain'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`mindstep_${currentDate.toISOString().split('T')[0]}.txt`;a.click();URL.revokeObjectURL(url);closeExportModal();showNotification('Note esportate!','💾')}catch(e){alert('Errore export')}}function sendToAI(ai){const notes=document.getElementById('brainstormNotes').value;if(!notes){alert('Nessuna nota da inviare');return}const date=currentDate.toLocaleDateString('it-IT'),prompt=`Data: ${date}%0A%0AI miei pensieri durante la camminata:%0A"${notes}"%0A%0AAiutami a:%0A1. Identificare i temi principali%0A2. Estrarre action items%0A3. Organizzare per priorità%0A4. Suggerire prossimi passi`;const urls={claude:'https://claude.ai/new?q='+prompt,chatgpt:'https://chat.openai.com/?q='+prompt,gemini:'https://gemini.google.com/?q='+prompt,copilot:'https://copilot.microsoft.com/?q='+prompt};window.open(urls[ai],'_blank');closeExportModal();showNotification(`Inviato a ${ai.charAt(0).toUpperCase()+ai.slice(1)}!`,'🤖')}function openCustomMusic(){const url=document.getElementById('customMusic').value.trim();if(!url){alert('Inserisci un URL');return}window.open(url,'_blank')}function toggleSection(sec){const content=document.getElementById(sec+'Content'),expand=document.getElementById(sec+'Expand');content.classList.toggle('expanded');expand.classList.toggle('rotated')}function updateStreak(){document.getElementById('streakNum').textContent=calculateStreak()}function calculateStreak(){let s=0;const today=new Date();today.setHours(0,0,0,0);for(let i=0;i<365;i++){const d=new Date(today);d.setDate(today.getDate()-i);const k=d.toISOString().split('T')[0],data=getDayData(k);if((data.routines&&Object.values(data.routines).some(v=>v))||data.walk)s++;else break}return s}function updateWeeklyAnalytics(){const grid=document.getElementById('weekGrid');grid.innerHTML='';const days=['D','L','M','M','G','V','S'],start=new Date(currentDate);start.setDate(currentDate.getDate()-currentDate.getDay());let active=0,km=0,totalR=0,doneR=0;for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);const k=d.toISOString().split('T')[0],data=getDayData(k);const hasAct=(data.routines&&Object.values(data.routines).some(v=>v))||data.walk;hasAct&&active++;data.walk&&(km+=data.walk.distance||0);if(data.routines){Object.values(data.routines).forEach((v,idx)=>{if(idx<routines.length){totalR++;v&&doneR++}})}const cell=document.createElement('div');cell.className='day-cell'+(hasAct?' active':'');cell.innerHTML=`<div class="day-name">${days[i]}</div><div style="font-size:18px">${hasAct?'✓':'−'}</div>`;grid.appendChild(cell)}document.getElementById('activeDays').textContent=`${active}/7`;document.getElementById('totalKm').textContent=km.toFixed(1);document.getElementById('completedRoutines').textContent=(totalR>0?Math.round((doneR/totalR)*100):0)+'%'}function updateBadges(){const grid=document.getElementById('badgesGrid');grid.innerHTML='';const unlocked=JSON.parse(localStorage.getItem('mindstep_badges')||'[]');BADGES.forEach(b=>{const isU=unlocked.includes(b.id),badge=document.createElement('div');badge.className='badge'+(isU?' unlocked':'');badge.innerHTML=`<div class="badge-icon">${b.icon}</div><div class="badge-name">${b.name}</div>`;badge.onclick=()=>showBadgeModal(b,isU);grid.appendChild(badge)})}function showBadgeModal(b,unlocked){document.getElementById('badgeModalIcon').textContent=b.icon;document.getElementById('badgeModalTitle').textContent=b.name;document.getElementById('badgeModalDesc').textContent=(unlocked?'✅ ':' 🔒 ')+b.desc;document.getElementById('badgeModal').classList.add('active')}function closeBadgeModal(){document.getElementById('badgeModal').classList.remove('active')}function checkMilestones(type){const unlocked=JSON.parse(localStorage.getItem('mindstep_badges')||'[]'),newBadges=[];BADGES.forEach(b=>{if(unlocked.includes(b.id))return;let unlock=!1;if(b.type===type||type==='check_all'){if(b.type==='walks'&&countTotalWalks()>=b.req)unlock=!0;if(b.type==='streak'&&calculateStreak()>=b.req)unlock=!0;if(b.type==='distance'&&getTotalDistance()>=b.req)unlock=!0;if(b.type==='special'&&type===b.id)unlock=!0;if(b.type==='walk_time'&&type===`time_${b.req}`)unlock=!0;if(b.type==='brainstorm'&&type==='brainstorm')unlock=!0}if(unlock){unlocked.push(b.id);newBadges.push(b)}});if(newBadges.length){localStorage.setItem('mindstep_badges',JSON.stringify(unlocked));updateBadges();newBadges.forEach(b=>showNotification(`Traguardo sbloccato: ${b.name}!`,b.icon))}}function countTotalWalks(){return Object.keys(localStorage).filter(k=>k.startsWith('mindstep_day_')&&JSON.parse(localStorage[k]).walk).length}function getTotalDistance(){let t=0;Object.keys(localStorage).forEach(k=>{if(k.startsWith('mindstep_day_')){const d=JSON.parse(localStorage[k]);d.walk?.distance&&(t+=d.walk.distance)}});return t}function showNotification(msg,icon){const notif=document.createElement('div');notif.className='notif-toast';notif.innerHTML=`<span class="notif-icon">${icon}</span><span class="notif-text">${msg}</span>`;document.body.appendChild(notif);setTimeout(()=>notif.remove(),3000);'Notification'in window&&Notification.permission==='granted'&&new Notification('MindStep',{body:msg,icon:'/icon-192.png'})}function setTheme(theme){document.documentElement.setAttribute('data-theme',theme);localStorage.setItem('mindstep_theme',theme);['Light','Auto','Dark'].forEach(t=>document.getElementById('theme'+t).classList.remove('active'));document.getElementById('theme'+theme.charAt(0).toUpperCase()+theme.slice(1)).classList.add('active')}function editProfile(){showScreen('screen-welcome');const u=JSON.parse(localStorage.getItem('mindstep_user'));document.getElementById('userName').value=u.name;document.getElementById('userAge').value=u.age||'';document.getElementById('userGender').value=u.gender||''}function editRoutines(){showScreen('screen-routines');const list=document.getElementById('routineList');list.innerHTML='';routines.forEach(r=>{addRoutineSetup();const inputs=list.querySelectorAll('input[type="text"]');inputs[inputs.length-1].value=r})}function exportAllData(){try{const all={user:JSON.parse(localStorage.getItem('mindstep_user')),routines,badges:JSON.parse(localStorage.getItem('mindstep_badges')||'[]'),version:APP_VERSION,exportDate:new Date().toISOString(),days:{}};Object.keys(localStorage).forEach(k=>{k.startsWith('mindstep_day_')&&(all.days[k.replace('mindstep_day_','')]=JSON.parse(localStorage[k]))});const blob=new Blob([JSON.stringify(all,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`mindstep_export_${new Date().toISOString().split('T')[0]}.json`;a.click();URL.revokeObjectURL(url);showNotification('Dati esportati!','💾')}catch(e){alert('Errore export')}}function resetApp(){confirm('⚠️ Cancellare TUTTI i dati?')&&confirm('Ultima conferma? Non potrai recuperarli.')&&(localStorage.clear(),location.reload())}function getDayData(key){return JSON.parse(localStorage.getItem(`mindstep_day_${key}`)||'{}')}function saveDayData(key,data){localStorage.setItem(`mindstep_day_${key}`,JSON.stringify(data))}window.addEventListener('click',e=>{e.target===document.getElementById('exportModal')&&closeExportModal();e.target===document.getElementById('badgeModal')&&closeBadgeModal()});init();const savedTheme=localStorage.getItem('mindstep_theme')||'auto';setTheme(savedTheme);console.log('🌱 MindStep v'+APP_VERSION);
+</script></body></html>

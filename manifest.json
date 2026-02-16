@@ -1,0 +1,44 @@
+{
+  "name": "MindStep - Walk, Think, Grow",
+  "short_name": "MindStep",
+  "description": "Unisci corpo e mente. Cammina, rifletti, cresci ogni giorno con l'AI che organizza i tuoi pensieri.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a1128",
+  "theme_color": "#00d4ff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "lifestyle", "productivity", "wellness"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Nuova Camminata",
+      "short_name": "Cammina",
+      "description": "Inizia una nuova camminata",
+      "url": "./index.html#walk",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Brainstorm",
+      "short_name": "Pensa",
+      "description": "Registra i tuoi pensieri",
+      "url": "./index.html#brainstorm",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
+}
