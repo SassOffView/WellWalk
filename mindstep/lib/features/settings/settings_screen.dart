@@ -6,8 +6,10 @@ import 'package:share_plus/share_plus.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/models/ai_provider_config.dart';
 import '../../core/models/user_profile.dart';
 import '../../shared/widgets/ms_card.dart';
+import '../onboarding/setup_ai_provider_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -204,6 +206,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
+              ),
+            ),
+
+            // ── AI Coach ─────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: _AiCoachSection(services: services),
               ),
             ),
 
@@ -546,6 +556,120 @@ class _SwitchRow extends StatelessWidget {
             activeColor: AppColors.cyan,
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── AI Coach Section ──────────────────────────────────────────────────────────
+
+class _AiCoachSection extends StatefulWidget {
+  const _AiCoachSection({required this.services});
+  final AppServices services;
+
+  @override
+  State<_AiCoachSection> createState() => _AiCoachSectionState();
+}
+
+class _AiCoachSectionState extends State<_AiCoachSection> {
+  AiProviderConfig _config = AiProviderConfig.none;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConfig();
+  }
+
+  Future<void> _loadConfig() async {
+    final config = await widget.services.aiInsight.loadProviderConfig();
+    if (mounted) setState(() { _config = config; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MsCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('AI Coach',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const Spacer(),
+              TextButton(
+                onPressed: () => _showAiSetup(context),
+                child: const Text('Cambia',
+                    style: TextStyle(color: AppColors.cyan)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_loading)
+            const SizedBox(
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2, color: AppColors.cyan,
+              ),
+            )
+          else
+            Row(
+              children: [
+                Text(
+                  _config.providerEmoji,
+                  style: const TextStyle(fontSize: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _config.providerName,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        _config.isConfigured
+                            ? (_config.isApiKeyValid
+                                ? 'Connesso ✅'
+                                : 'Chiave non testata ⚠️')
+                            : 'Nessun AI configurato — tocca Cambia per aggiungerne uno',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showAiSetup(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.92,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (ctx, _) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SetupAiProviderScreen(
+            aiService: widget.services.aiInsight,
+            onBack: () => Navigator.pop(ctx),
+            onNext: (config) {
+              Navigator.pop(ctx);
+              _loadConfig();
+            },
+          ),
+        ),
       ),
     );
   }

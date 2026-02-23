@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/services/storage/local_db_service.dart';
@@ -8,10 +10,14 @@ import 'core/services/badge_service.dart';
 import 'core/services/gps_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/health_service.dart';
+import 'core/services/ai_insight_service.dart';
 import 'core/models/subscription_status.dart';
+import 'core/models/notification_preferences.dart';
+import 'core/constants/app_strings.dart';
 
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/onboarding/setup_profile_screen.dart';
+import 'features/onboarding/setup_extras_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/history/history_screen.dart';
 import 'features/analytics/analytics_screen.dart';
@@ -23,19 +29,23 @@ import 'subscription/paywall_screen.dart';
 class AppServices extends ChangeNotifier {
   final LocalDbService db = LocalDbService();
   late final BadgeService badges;
+  late final AiInsightService aiInsight;
   final GpsService gps = GpsService();
   final NotificationService notifications = NotificationService();
   final HealthService health = HealthService();
 
   SubscriptionStatus _subscription = SubscriptionStatus.freePlan;
   ThemeMode _themeMode = ThemeMode.system;
+  NotificationPreferences _notifPrefs = NotificationPreferences.defaults;
 
   SubscriptionStatus get subscription => _subscription;
   ThemeMode get themeMode => _themeMode;
+  NotificationPreferences get notifPrefs => _notifPrefs;
   bool get isPro => _subscription.isPro;
 
   AppServices() {
     badges = BadgeService(db);
+    aiInsight = AiInsightService(db);
     badges.onBadgeUnlocked = _onBadgeUnlocked;
     _init();
   }
@@ -44,6 +54,68 @@ class AppServices extends ChangeNotifier {
     _subscription = await db.loadSubscription();
     notifyListeners();
     await notifications.initialize();
+
+    // Carica preferenze notifiche e ripristina scheduling
+    final sp = await SharedPreferences.getInstance();
+    final notifJson = sp.getString('notification_prefs');
+    if (notifJson != null) {
+      _notifPrefs = NotificationPreferences.fromJson(
+        Map<String, dynamic>.from(jsonDecode(notifJson) as Map),
+      );
+      notifyListeners();
+      await _scheduleNotifications(_notifPrefs);
+    }
+  }
+
+  /// Salva le preferenze di notifica e programma gli avvisi
+  Future<void> applyNotificationPreferences(NotificationPreferences prefs) async {
+    _notifPrefs = prefs;
+    notifyListeners();
+
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString('notification_prefs', jsonEncode(prefs.toJson()));
+    await _scheduleNotifications(prefs);
+  }
+
+  Future<void> _scheduleNotifications(NotificationPreferences prefs) async {
+    if (prefs.dailyReminderEnabled) {
+      await notifications.scheduleMorningReminder(
+        hour: prefs.dailyReminderHour,
+        minute: prefs.dailyReminderMinute,
+        message: AppStrings.morningMessages[0],
+      );
+    }
+    if (prefs.routineReminderEnabled) {
+      await notifications.scheduleRoutineReminder(
+        hour: prefs.routineReminderHour,
+        minute: prefs.routineReminderMinute,
+      );
+    }
+    if (prefs.walkReminderEnabled) {
+      await notifications.scheduleWalkReminder(
+        hour: prefs.walkReminderHour,
+        minute: prefs.walkReminderMinute,
+      );
+    }
+    if (prefs.brainReminderEnabled) {
+      await notifications.scheduleBrainReminder(
+        hour: prefs.brainReminderHour,
+        minute: prefs.brainReminderMinute,
+      );
+    }
+    if (prefs.streakWarningEnabled) {
+      await notifications.scheduleStreakWarning();
+    }
+  }
+
+  /// Aggiorna il messaggio della notifica mattutina con l'insight AI
+  Future<void> updateMorningMessageWithInsight(String aiMessage) async {
+    if (!_notifPrefs.dailyReminderEnabled) return;
+    await notifications.scheduleMorningReminder(
+      hour: _notifPrefs.dailyReminderHour,
+      minute: _notifPrefs.dailyReminderMinute,
+      message: aiMessage,
+    );
   }
 
   void _onBadgeUnlocked(dynamic badge) async {
@@ -107,6 +179,10 @@ class MindStepApp extends StatelessWidget {
       GoRoute(
         path: '/setup',
         builder: (_, __) => const SetupProfileScreen(),
+      ),
+      GoRoute(
+        path: '/setup/extras',
+        builder: (_, __) => const SetupExtrasScreen(),
       ),
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),

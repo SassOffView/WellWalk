@@ -132,7 +132,7 @@ class NotificationService {
     required int minute,
     required String message,
   }) async {
-    await _plugin.cancelAll(); // Cancella precedenti dello stesso tipo
+    await _plugin.cancel(_idMorningReminder); // Cancella solo il reminder mattutino
 
     final scheduledDate = _nextInstanceOf(hour, minute);
 

@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/models/daily_insight.dart';
 import '../../core/models/day_data.dart';
 import '../../core/models/user_profile.dart';
 import '../../shared/widgets/ms_card.dart';
+import '../../shared/widgets/daily_insight_card.dart';
 import 'walk/walk_widget.dart';
 import 'routine/routine_widget.dart';
 import 'brainstorm/brainstorm_widget.dart';
@@ -20,8 +22,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   UserProfile? _profile;
   DayData? _dayData;
+  DailyInsight? _insight;
   String _quote = '';
   bool _loading = true;
+  bool _insightLoading = false;
 
   @override
   void initState() {
@@ -45,6 +49,51 @@ class _HomeScreenState extends State<HomeScreen> {
         _quote = quote;
         _loading = false;
       });
+
+      // Carica insight AI in background (non blocca il caricamento UI)
+      if (profile != null) {
+        _loadInsight(services, profile);
+      }
+    }
+  }
+
+  Future<void> _loadInsight(AppServices services, UserProfile profile) async {
+    if (!mounted) return;
+    setState(() => _insightLoading = true);
+    try {
+      final insight = await services.aiInsight.getDailyInsight(profile);
+      if (mounted) {
+        setState(() {
+          _insight = insight;
+          _insightLoading = false;
+        });
+        // Aggiorna notifica mattutina con messaggio AI personalizzato
+        if (insight.generatedBy != 'locale') {
+          services.updateMorningMessageWithInsight(insight.motivationalMessage);
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _insightLoading = false);
+    }
+  }
+
+  Future<void> _refreshInsight() async {
+    if (_profile == null) return;
+    final services = context.read<AppServices>();
+    setState(() => _insightLoading = true);
+    try {
+      final insight = await services.aiInsight.refreshTodayInsight(_profile!);
+      if (mounted) {
+        setState(() {
+          _insight = insight;
+          _insightLoading = false;
+        });
+        if (insight.generatedBy != 'locale') {
+          services.updateMorningMessageWithInsight(insight.motivationalMessage);
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _insightLoading = false);
     }
   }
 
@@ -160,6 +209,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
+              // ── AI Daily Insight ──────────────────────────────────────
+              if (_insight != null || _insightLoading)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: DailyInsightCard(
+                      insight: _insight,
+                      isLoading: _insightLoading,
+                      onRefresh: _insightLoading ? null : _refreshInsight,
+                    ),
+                  ),
+                ),
+
               // ── Walk Widget ───────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
@@ -189,6 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: BrainstormWidget(
                     dayData: _dayData,
                     onSaved: _reload,
+                    aiPromptOfDay: _insight?.brainstormPrompt,
                   ),
                 ),
               ),

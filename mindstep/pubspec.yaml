@@ -72,6 +72,9 @@ dependencies:
   # HTTP
   http: ^1.2.2
 
+  # Secure storage per API keys AI (criptato su dispositivo)
+  flutter_secure_storage: ^9.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

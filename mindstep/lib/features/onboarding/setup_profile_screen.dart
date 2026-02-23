@@ -278,7 +278,7 @@ class _SetupProfileScreenState extends State<SetupProfileScreen> {
       ));
     }
 
-    if (mounted) context.go('/home');
+    if (mounted) context.go('/setup/extras');
   }
 
   @override

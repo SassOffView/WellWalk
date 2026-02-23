@@ -14,10 +14,14 @@ class BrainstormWidget extends StatefulWidget {
     super.key,
     this.dayData,
     this.onSaved,
+    this.aiPromptOfDay,
   });
 
   final DayData? dayData;
   final VoidCallback? onSaved;
+
+  /// Prompt brainstorming generato dall'AI per oggi (se configurato)
+  final String? aiPromptOfDay;
 
   @override
   State<BrainstormWidget> createState() => _BrainstormWidgetState();
@@ -166,6 +170,63 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
             ),
 
           const SizedBox(height: 12),
+
+          // ── AI prompt del giorno ────────────────────────────────────
+          if (widget.aiPromptOfDay != null &&
+              widget.aiPromptOfDay!.isNotEmpty) ...[
+            GestureDetector(
+              onTap: () {
+                // Usa il prompt come starter se l'area è vuota
+                if (_controller.text.trim().isEmpty) {
+                  _controller.text = widget.aiPromptOfDay!;
+                  _controller.selection = TextSelection.fromPosition(
+                    TextPosition(offset: _controller.text.length),
+                  );
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.cyan.withOpacity(0.06),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('💡', style: TextStyle(fontSize: 13)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Prompt AI di oggi',
+                            style: TextStyle(
+                              color: AppColors.cyan,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 11,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.aiPromptOfDay!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(height: 1.45),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.touch_app_outlined,
+                        color: AppColors.cyan, size: 14),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
 
           // Text area
           TextField(
