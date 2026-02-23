@@ -1,14 +1,5 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:8.3.0"
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22"
-        classpath "com.google.gms:google-services:4.4.0"
-    }
-}
+// Il plugin management è gestito da settings.gradle (Flutter 3.x+)
+// Non servono buildscript{} o classpath qui — dichiarati in settings.gradle
 
 allprojects {
     repositories {
@@ -28,3 +19,4 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
+
