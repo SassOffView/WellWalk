@@ -25,7 +25,7 @@ class HealthService {
   Future<bool> requestPermissions() async {
     final permissions = _types.map((_) => HealthDataAccess.READ_WRITE).toList();
     try {
-      await _health.configure(useHealthConnectIfAvailable: true);
+      await _health.configure();
       return await _health.requestAuthorization(_types, permissions: permissions);
     } catch (_) {
       return false;
@@ -108,7 +108,7 @@ class HealthService {
       if (data.isEmpty) return 0;
       return data
           .map((d) => (d.value as NumericHealthValue).numericValue.round())
-          .fold(0, (a, b) => a + b);
+          .fold<int>(0, (a, b) => a + b);
     } catch (_) {
       return 0;
     }

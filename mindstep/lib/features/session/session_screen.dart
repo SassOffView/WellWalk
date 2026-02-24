@@ -108,7 +108,7 @@ class _SessionScreenState extends State<SessionScreen>
     // Carica frase AI (già cached se aperta prima oggi)
     try {
       final p = await services.aiInsight
-          .getMotivationalPhrase(_profile ?? UserProfile.empty());
+          .getMotivationalPhrase(_profile ?? UserProfile.guest());
       if (!mounted) return;
       setState(() {
         _phrase = p;
@@ -608,7 +608,7 @@ class _CapturingView extends StatelessWidget {
               cursorColor: AppColors.cyan,
               decoration: InputDecoration(
                 hintText: 'Inizia a scrivere…',
-                hintStyle: TextStyle(color: Colors.white18, fontSize: 15),
+                hintStyle: TextStyle(color: Colors.white24, fontSize: 15),
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.04),
                 border: OutlineInputBorder(

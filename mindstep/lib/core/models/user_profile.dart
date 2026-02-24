@@ -80,6 +80,13 @@ class UserProfile extends Equatable {
     'totalBrainstormCount': totalBrainstormCount,
   };
 
+  factory UserProfile.guest() => UserProfile(
+    name: '',
+    age: 0,
+    gender: Gender.other,
+    createdAt: DateTime.now(),
+  );
+
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
     name: json['name'] as String,
     age: json['age'] as int,
