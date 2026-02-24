@@ -87,8 +87,6 @@ dependencies:
   # WebView — per export AI in-app
   webview_flutter: ^4.10.0
 
-  # Clipboard
-  flutter_clipboard: ^0.0.2
 
 dev_dependencies:
   flutter_test:
