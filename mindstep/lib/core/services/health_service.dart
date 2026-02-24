@@ -4,7 +4,7 @@ import '../models/walk_session.dart';
 /// Integrazione Health Connect (Android 14+) e Google Fit (fallback)
 /// Disponibile solo per utenti PRO
 class HealthService {
-  final HealthFactory _health = HealthFactory(useHealthConnectIfAvailable: true);
+  final _health = Health();
 
   static const _types = [
     HealthDataType.STEPS,
@@ -25,6 +25,7 @@ class HealthService {
   Future<bool> requestPermissions() async {
     final permissions = _types.map((_) => HealthDataAccess.READ_WRITE).toList();
     try {
+      await _health.configure(useHealthConnectIfAvailable: true);
       return await _health.requestAuthorization(_types, permissions: permissions);
     } catch (_) {
       return false;

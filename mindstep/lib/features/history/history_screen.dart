@@ -352,7 +352,7 @@ class _DayDetail extends StatelessWidget {
               _DetailRow(
                 emoji: '🚶',
                 label: 'Camminata',
-                value: '${data.walk!.formattedDistance} km · ${data.walk!.formattedTime}',
+                value: '${data.walk!.distanceKm.toStringAsFixed(2)} km · ${data.walk!.activeMinutes} min',
               ),
               const SizedBox(height: 8),
             ],
