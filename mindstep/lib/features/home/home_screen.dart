@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -26,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _quote = '';
   bool _loading = true;
   bool _insightLoading = false;
+  bool _sessionDone = false;
 
   @override
   void initState() {
@@ -35,8 +37,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _load() async {
     final services = context.read<AppServices>();
-    final profile = await services.db.loadUserProfile();
-    final dayData = await services.db.loadDayData(DateTime.now());
+    final results = await Future.wait([
+      services.db.loadUserProfile(),
+      services.db.loadDayData(DateTime.now()),
+      services.db.hasSessionToday(),
+    ]);
+    final profile = results[0] as UserProfile?;
+    final dayData = results[1] as DayData;
+    final sessionDone = results[2] as bool;
     final quote = _getDailyQuote();
 
     // Controlla badge al caricamento (FIX BUG #1 PWA)
@@ -46,6 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _profile = profile;
         _dayData = dayData;
+        _sessionDone = sessionDone;
         _quote = quote;
         _loading = false;
       });
@@ -99,8 +108,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _reload() async {
     final services = context.read<AppServices>();
-    final dayData = await services.db.loadDayData(DateTime.now());
-    if (mounted) setState(() => _dayData = dayData);
+    final results = await Future.wait([
+      services.db.loadDayData(DateTime.now()),
+      services.db.hasSessionToday(),
+    ]);
+    if (mounted) {
+      setState(() {
+        _dayData = results[0] as DayData;
+        _sessionDone = results[1] as bool;
+      });
+    }
   }
 
   String _getDailyQuote() {
@@ -205,6 +222,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ],
                     ),
+                  ),
+                ),
+              ),
+
+              // ── Session Start Card ────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: _SessionStartCard(
+                    isDone: _sessionDone,
+                    onTap: () async {
+                      await context.push('/session');
+                      _reload();
+                    },
                   ),
                 ),
               ),
@@ -318,6 +349,126 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]}';
   }
 }
+
+// ─── Session Start Card ───────────────────────────────────────────────────────
+
+class _SessionStartCard extends StatelessWidget {
+  const _SessionStartCard({required this.isDone, required this.onTap});
+  final bool isDone;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isDone) {
+      return MsCard(
+        color: AppColors.cyan.withOpacity(0.07),
+        borderColor: AppColors.cyan.withOpacity(0.3),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.cyan.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Text(
+                  '✓',
+                  style: TextStyle(
+                    color: AppColors.cyan,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Momento completato oggi',
+                    style: TextStyle(
+                      color: AppColors.cyan,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Ottimo lavoro. Domani sarà ancora qui per te.',
+                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0F1D4A), Color(0xFF162055)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            const Text('🌊', style: TextStyle(fontSize: 34)),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Il tuo momento di chiarezza',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '60 secondi per te. Anche oggi.',
+                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: AppColors.cyan,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Inizia',
+                style: TextStyle(
+                  color: Color(0xFF0A1128),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Music Button ─────────────────────────────────────────────────────────────
 
 class _MusicButton extends StatelessWidget {
   const _MusicButton({

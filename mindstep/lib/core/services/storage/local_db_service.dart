@@ -5,6 +5,7 @@ import 'package:sqflite/sqflite.dart';
 import '../../models/badge_model.dart';
 import '../../models/day_data.dart';
 import '../../models/routine_item.dart';
+import '../../models/session_data.dart';
 import '../../models/subscription_status.dart';
 import '../../models/user_profile.dart';
 import '../../models/walk_session.dart';
@@ -14,12 +15,13 @@ import '../../constants/app_badges.dart';
 /// Usato da tutti gli utenti (Free e Pro come cache locale)
 class LocalDbService {
   static const _dbName = 'mindstep.db';
-  static const _dbVersion = 1;
+  static const _dbVersion = 2; // v2: tabella sessions per il rituale
 
   static const _tableDay = 'day_data';
   static const _tableRoutines = 'routines';
   static const _tableWalks = 'walks';
   static const _tableBadges = 'badges';
+  static const _tableSessions = 'sessions';
 
   Database? _db;
 
@@ -34,6 +36,7 @@ class LocalDbService {
       path,
       version: _dbVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -76,6 +79,30 @@ class LocalDbService {
       CREATE TABLE $_tableBadges (
         id TEXT PRIMARY KEY,
         unlocked_at TEXT NOT NULL
+      )
+    ''');
+
+    await _createSessionsTable(db);
+  }
+
+  /// Migrazione DB v1 → v2
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await _createSessionsTable(db);
+    }
+  }
+
+  Future<void> _createSessionsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableSessions (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        motivational_phrase TEXT DEFAULT '',
+        user_input TEXT DEFAULT '',
+        duration_seconds INTEGER DEFAULT 0,
+        had_walk INTEGER DEFAULT 0,
+        inferred_mood TEXT DEFAULT 'normale',
+        created_at TEXT NOT NULL
       )
     ''');
   }
@@ -244,6 +271,57 @@ class LocalDbService {
     );
   }
 
+  // ── SESSIONS (rituale quotidiano) ───────────────────────────────────
+
+  Future<void> saveSession(SessionData session) async {
+    final database = await db;
+    await database.insert(
+      _tableSessions,
+      {
+        'id': session.id,
+        'date': _dateKey(session.date),
+        'motivational_phrase': session.motivationalPhrase,
+        'user_input': session.userInput,
+        'duration_seconds': session.durationSeconds,
+        'had_walk': session.hadWalk ? 1 : 0,
+        'inferred_mood': session.inferredMood,
+        'created_at': session.date.toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<bool> hasSessionToday() async {
+    final database = await db;
+    final rows = await database.query(
+      _tableSessions,
+      where: 'date = ?',
+      whereArgs: [_dateKey(DateTime.now())],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Restituisce i giorni dall'ultima sessione completata.
+  /// Ritorna null se l'utente non ha mai fatto una sessione (primo utilizzo).
+  Future<int?> daysSinceLastSession() async {
+    final database = await db;
+    final rows = await database.query(
+      _tableSessions,
+      orderBy: 'date DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+
+    final lastDate = rows.first['date'] as String;
+    final last = DateTime.parse(lastDate);
+    final today = DateTime.now();
+    final diff = DateTime(today.year, today.month, today.day)
+        .difference(DateTime(last.year, last.month, last.day))
+        .inDays;
+    return diff;
+  }
+
   // ── ANALYTICS ───────────────────────────────────────────────────────
 
   Future<int> countTotalWalks() async {
@@ -299,7 +377,17 @@ class LocalDbService {
         whereArgs: [dateKey],
       );
 
-      final isActive = walks.isNotEmpty || routines.isNotEmpty || dayData.isNotEmpty;
+      // Controlla sessione rituale
+      final sessions = await database.query(
+        _tableSessions,
+        where: 'date = ?',
+        whereArgs: [dateKey],
+      );
+
+      final isActive = walks.isNotEmpty ||
+          routines.isNotEmpty ||
+          dayData.isNotEmpty ||
+          sessions.isNotEmpty;
 
       if (isActive) {
         streak++;
@@ -367,6 +455,7 @@ class LocalDbService {
     await database.delete('day_routines');
     await database.delete(_tableWalks);
     await database.delete(_tableBadges);
+    await database.delete(_tableSessions);
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();

@@ -214,8 +214,8 @@ class NotificationService {
 
     await _plugin.zonedSchedule(
       _idStreakWarning,
-      '⚠️ Non perdere la tua streak!',
-      'Completa almeno un\'attività oggi per mantenere la consecutiva.',
+      'Hai 5 minuti per te oggi?',
+      'Anche un piccolo gesto conta. Il tuo momento di riflessione ti aspetta.',
       scheduledDate,
       const NotificationDetails(
         android: AndroidNotificationDetails(

@@ -20,8 +20,21 @@ class AiInsightService {
   );
 
   static const _cacheKeyPrefix = 'ai_insight_';
+  static const _motivationalPhrasePrefix = 'ai_phrase_';
   static const _configKey = 'ai_provider_config';
   static const _secureKeyName = 'ai_api_key';
+
+  // Frasi di fallback — usate quando AI non è configurato o la chiamata fallisce.
+  // Tono: calmo, introspettivo, mai aggressivo o da "coach".
+  static const _fallbackPhrases = [
+    'Respira. I tuoi pensieri aspettano di essere ascoltati.',
+    'La chiarezza inizia quando ci si ferma un momento.',
+    'Cosa conta davvero adesso?',
+    'La mente si chiarisce quando le dai spazio.',
+    'Oggi, un pensiero alla volta.',
+    'Ogni momento di riflessione è un passo avanti.',
+    'La lucidità è già dentro di te.',
+  ];
 
   // ── Configurazione provider ──────────────────────────────────────────
 
@@ -101,6 +114,145 @@ class AiInsightService {
     _cacheInsight(prefs, cacheKey, insight);
     return insight;
   }
+
+  // ── Frase motivazionale rituale (max 12 parole) ───────────────────────
+
+  /// Genera o restituisce la frase motivazionale di oggi.
+  /// Cache giornaliera separata dall'insight → chiamata API leggera.
+  /// Se AI non configurato → ritorna una frase di fallback locale.
+  Future<String> getMotivationalPhrase(UserProfile profile) async {
+    final today = DateTime.now();
+    final cacheKey = '$_motivationalPhrasePrefix${_dateKey(today)}';
+    final prefs = await SharedPreferences.getInstance();
+
+    // Controlla cache
+    final cached = prefs.getString(cacheKey);
+    if (cached != null && cached.isNotEmpty) return cached;
+
+    // Genera frase con AI
+    final config = await loadProviderConfig();
+    if (!config.hasValidKey) {
+      final fallback = _localMotivationalPhrase(today);
+      await prefs.setString(cacheKey, fallback);
+      return fallback;
+    }
+
+    try {
+      final context = await _buildMotivationalContext(profile);
+      final prompt = _buildMotivationalPrompt(context);
+
+      String? raw;
+      switch (config.provider) {
+        case AiProvider.gemini:
+          raw = await _callGemini(config.apiKey, prompt);
+          break;
+        case AiProvider.openai:
+          raw = await _callOpenAI(config.apiKey, prompt);
+          break;
+        case AiProvider.claude:
+          raw = await _callClaude(config.apiKey, prompt);
+          break;
+        case AiProvider.azureOpenai:
+          raw = await _callAzureOpenAI(config, prompt);
+          break;
+        case AiProvider.none:
+          raw = null;
+      }
+
+      if (raw == null || raw.trim().isEmpty) {
+        final fallback = _localMotivationalPhrase(today);
+        await prefs.setString(cacheKey, fallback);
+        return fallback;
+      }
+
+      // Pulisce la risposta (rimuove virgolette, markdown, ecc.)
+      final phrase = raw
+          .trim()
+          .replaceAll(RegExp(r'^["«»""]|["«»""]$'), '')
+          .replaceAll('```', '')
+          .trim();
+
+      await prefs.setString(cacheKey, phrase);
+      return phrase;
+    } catch (_) {
+      final fallback = _localMotivationalPhrase(today);
+      await prefs.setString(cacheKey, fallback);
+      return fallback;
+    }
+  }
+
+  /// Costruisce il contesto comportamentale per la frase motivazionale.
+  /// Non fa chiamate API — legge solo dal DB locale.
+  Future<String> _buildMotivationalContext(UserProfile profile) async {
+    final daysSince = await _db.daysSinceLastSession();
+    final hour = DateTime.now().hour;
+
+    final String timeOfDay;
+    if (hour < 12) {
+      timeOfDay = 'mattina';
+    } else if (hour < 18) {
+      timeOfDay = 'pomeriggio';
+    } else {
+      timeOfDay = 'sera';
+    }
+
+    // Inferisce lo stato emotivo dal comportamento
+    final String stato;
+    final String istruzione;
+    if (daysSince == null) {
+      stato = 'primo utilizzo dell\'app';
+      istruzione =
+          'Genera una frase che inviti all\'azione e all\'organizzazione '
+          'mentale. Non fare riferimento a sessioni passate.';
+    } else if (daysSince == 0) {
+      stato = 'ha già fatto un momento oggi';
+      istruzione = 'Genera una frase che celebri la costanza e inviti '
+          'alla riflessione di fine giornata.';
+    } else if (daysSince == 1) {
+      stato = 'ritorno quotidiano';
+      istruzione =
+          'Genera una frase introspettiva per iniziare il momento.';
+    } else if (daysSince <= 6) {
+      stato = 'assenza di $daysSince giorni';
+      istruzione =
+          'Genera una frase che inviti gentilmente a riprendere, '
+          'senza pressione. Tono accogliente, non di rimprovero.';
+    } else {
+      stato = 'rientro dopo un lungo periodo';
+      istruzione =
+          'Genera una frase calda di accoglienza. Celebra il ritorno '
+          'senza enfasi sul tempo trascorso.';
+    }
+
+    return 'Utente: ${profile.name}, ${profile.age} anni\n'
+        'Ora del giorno: $timeOfDay\n'
+        'Stato: $stato\n'
+        '$istruzione';
+  }
+
+  String _buildMotivationalPrompt(String context) => '''
+Sei la voce lucida dell'utente — non un coach esterno, ma la sua parte più chiara.
+Genera UNA sola frase di apertura per il suo momento di chiarezza mentale.
+
+$context
+
+REGOLE ASSOLUTE:
+- Massimo 12 parole
+- Lingua: italiano
+- Tono: calmo, introspettivo, come parlare con se stessi in silenzio
+- Focus: chiarezza, presenza, organizzazione dei pensieri
+- NON usare: esclamazioni, imperativi aggressivi, cliché motivazionali
+- NON iniziare con "Tu" diretto
+
+Rispondi SOLO con la frase. Zero altri caratteri.''';
+
+  /// Frase di fallback locale — nessuna rete, nessun AI.
+  String _localMotivationalPhrase(DateTime date) {
+    final idx = date.day % _fallbackPhrases.length;
+    return _fallbackPhrases[idx];
+  }
+
+  // ── Fine frase motivazionale ─────────────────────────────────────────
 
   /// Forza la rigenerazione dell'insight di oggi (ignora cache)
   Future<DailyInsight> refreshTodayInsight(UserProfile profile) async {

@@ -69,6 +69,9 @@ dependencies:
   # Google Fonts
   google_fonts: ^6.2.1
 
+  # TTS — voce rituale (usa Google TTS del dispositivo, gratuito, offline)
+  flutter_tts: ^4.2.0
+
   # HTTP
   http: ^1.2.2
 

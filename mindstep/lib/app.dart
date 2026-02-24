@@ -11,6 +11,7 @@ import 'core/services/gps_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/health_service.dart';
 import 'core/services/ai_insight_service.dart';
+import 'core/services/tts_service.dart';
 import 'core/models/subscription_status.dart';
 import 'core/models/notification_preferences.dart';
 import 'core/constants/app_strings.dart';
@@ -23,6 +24,7 @@ import 'features/history/history_screen.dart';
 import 'features/analytics/analytics_screen.dart';
 import 'features/achievements/achievements_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/session/session_screen.dart';
 import 'subscription/paywall_screen.dart';
 
 /// Provider globale per dependency injection
@@ -33,6 +35,7 @@ class AppServices extends ChangeNotifier {
   final GpsService gps = GpsService();
   final NotificationService notifications = NotificationService();
   final HealthService health = HealthService();
+  final TtsService tts = TtsService();
 
   SubscriptionStatus _subscription = SubscriptionStatus.freePlan;
   ThemeMode _themeMode = ThemeMode.system;
@@ -53,7 +56,10 @@ class AppServices extends ChangeNotifier {
   Future<void> _init() async {
     _subscription = await db.loadSubscription();
     notifyListeners();
-    await notifications.initialize();
+    await Future.wait([
+      notifications.initialize(),
+      tts.initialize(),
+    ]);
 
     // Carica preferenze notifiche e ripristina scheduling
     final sp = await SharedPreferences.getInstance();
@@ -208,6 +214,10 @@ class MindStepApp extends StatelessWidget {
             builder: (_, __) => const SettingsScreen(),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/session',
+        builder: (_, __) => const SessionScreen(),
       ),
       GoRoute(
         path: '/paywall',
