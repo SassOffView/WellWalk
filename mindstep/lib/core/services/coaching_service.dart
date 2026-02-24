@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../models/ai_provider_config.dart';
 import 'ai_insight_service.dart';
 
 /// Messaggio in una conversazione con il coach
