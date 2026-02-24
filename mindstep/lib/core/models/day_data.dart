@@ -10,14 +10,16 @@ class DayData extends Equatable {
     this.completedRoutineIds = const [],
     this.brainstormNote = '',
     this.brainstormCount = 0,
+    this.brainstormMinutes = 0,
   });
 
   final DateTime date;
   final WalkSession? walk;
-  final List<String> routineIds;          // Tutte le routine del giorno
-  final List<String> completedRoutineIds; // Routine spuntate
+  final List<String> routineIds;
+  final List<String> completedRoutineIds;
   final String brainstormNote;
-  final int brainstormCount;              // Quante note in questo giorno
+  final int brainstormCount;
+  final int brainstormMinutes; // minuti totali di brainstorm oggi
 
   // ── Computed ────────────────────────────────────────────────────────
   String get dateKey {
@@ -28,11 +30,8 @@ class DayData extends Equatable {
   }
 
   bool get hasWalk => walk != null;
-
   bool get hasBrainstorm => brainstormNote.isNotEmpty;
-
   int get routineTotal => routineIds.length;
-
   int get routineCompleted => completedRoutineIds.length;
 
   double get routinePercent {
@@ -49,7 +48,6 @@ class DayData extends Equatable {
   bool get hasHalfRoutinesDone =>
       routineTotal > 0 && routinePercent >= 50;
 
-  /// Full combo: walk + almeno una routine + brainstorm
   bool get hasDailyCombo =>
       hasWalk && routineCompleted > 0 && hasBrainstorm;
 
@@ -59,6 +57,7 @@ class DayData extends Equatable {
     List<String>? completedRoutineIds,
     String? brainstormNote,
     int? brainstormCount,
+    int? brainstormMinutes,
   }) {
     return DayData(
       date: date,
@@ -67,6 +66,7 @@ class DayData extends Equatable {
       completedRoutineIds: completedRoutineIds ?? this.completedRoutineIds,
       brainstormNote: brainstormNote ?? this.brainstormNote,
       brainstormCount: brainstormCount ?? this.brainstormCount,
+      brainstormMinutes: brainstormMinutes ?? this.brainstormMinutes,
     );
   }
 
@@ -77,6 +77,7 @@ class DayData extends Equatable {
     'completedRoutineIds': completedRoutineIds,
     'brainstormNote': brainstormNote,
     'brainstormCount': brainstormCount,
+    'brainstormMinutes': brainstormMinutes,
   };
 
   factory DayData.fromJson(Map<String, dynamic> json) => DayData(
@@ -92,11 +93,12 @@ class DayData extends Equatable {
         .toList() ?? [],
     brainstormNote: json['brainstormNote'] as String? ?? '',
     brainstormCount: json['brainstormCount'] as int? ?? 0,
+    brainstormMinutes: json['brainstormMinutes'] as int? ?? 0,
   );
 
   factory DayData.empty(DateTime date) => DayData(date: date);
 
   @override
   List<Object?> get props =>
-      [date, walk, routineIds, completedRoutineIds, brainstormNote, brainstormCount];
+      [date, walk, routineIds, completedRoutineIds, brainstormNote, brainstormCount, brainstormMinutes];
 }

@@ -1,6 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -80,7 +81,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: MsGradientCard(
                         child: Row(
                           children: [
-                            const Text('🔥', style: TextStyle(fontSize: 40)),
+                            PhosphorIcon(
+                              PhosphorIcons.flame(PhosphorIconsStyle.fill),
+                              color: Colors.orange,
+                              size: 40,
+                            ),
                             const SizedBox(width: 16),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,21 +123,21 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                             label: AppStrings.analyticsTotalKm,
                             value: _totalKm.toStringAsFixed(1),
                             unit: 'km',
-                            emoji: '📍',
+                            icon: PhosphorIcons.mapPin(),
                           ),
                           const SizedBox(width: 12),
                           _StatCard(
                             label: 'Camminate',
                             value: '$_totalWalks',
                             unit: 'totali',
-                            emoji: '🚶',
+                            icon: PhosphorIcons.personSimpleWalk(),
                           ),
                           const SizedBox(width: 12),
                           _StatCard(
                             label: 'Giorni attivi',
                             value: '${_weekData.where((d) => d.isActive).length}',
                             unit: 'questa settimana',
-                            emoji: '📅',
+                            icon: PhosphorIcons.calendarCheck(),
                           ),
                         ],
                       ),
@@ -242,9 +247,10 @@ class _StatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.unit,
-    required this.emoji,
+    required this.icon,
   });
-  final String label, value, unit, emoji;
+  final String label, value, unit;
+  final PhosphorIconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -254,7 +260,7 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 20)),
+            PhosphorIcon(icon, size: 20, color: AppColors.cyan),
             const SizedBox(height: 8),
             Text(value,
               style: const TextStyle(

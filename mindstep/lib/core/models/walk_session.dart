@@ -41,6 +41,7 @@ class WalkSession extends Equatable {
     this.pausedAt,
     this.completedAt,
     this.maxSpeedKmh = 0.0,
+    this.stepCount = 0,
   });
 
   final String id;
@@ -52,6 +53,7 @@ class WalkSession extends Equatable {
   final DateTime? pausedAt;
   final DateTime? completedAt;
   final double maxSpeedKmh;
+  final int stepCount;                // Passi contati dal pedometro
 
   // ── Computed ────────────────────────────────────────────────────────
   double get distanceKm => distanceMeters / 1000.0;
@@ -60,20 +62,34 @@ class WalkSession extends Equatable {
 
   int get activeMinutes => (activeMilliseconds / 60000).round();
 
-  /// Velocità media km/h (solo quando la sessione è in corso o completata)
   double get avgSpeedKmh {
     final hours = activeMilliseconds / 3600000.0;
     if (hours <= 0) return 0.0;
     return distanceKm / hours;
   }
 
-  /// Calorie bruciate: formula semplice (distanza_km * peso_kg * 1.036)
   double caloriesBurned({double weightKg = 65.0}) =>
       distanceKm * weightKg * 1.036;
 
   bool get isActive => state == WalkState.active;
   bool get isPaused => state == WalkState.paused;
   bool get isCompleted => state == WalkState.completed;
+
+  String get formattedTime {
+    final s = activeSeconds;
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final sec = s % 60;
+    if (h > 0) {
+      return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+    }
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
+  String get formattedDistance => distanceKm.toStringAsFixed(2);
+  String get formattedSpeed => avgSpeedKmh.toStringAsFixed(1);
+  String get formattedCalories => caloriesBurned().toStringAsFixed(0);
+  String get formattedSteps => stepCount.toString();
 
   WalkSession copyWith({
     WalkState? state,
@@ -83,6 +99,7 @@ class WalkSession extends Equatable {
     DateTime? pausedAt,
     DateTime? completedAt,
     double? maxSpeedKmh,
+    int? stepCount,
   }) {
     return WalkSession(
       id: id,
@@ -94,6 +111,7 @@ class WalkSession extends Equatable {
       pausedAt: pausedAt ?? this.pausedAt,
       completedAt: completedAt ?? this.completedAt,
       maxSpeedKmh: maxSpeedKmh ?? this.maxSpeedKmh,
+      stepCount: stepCount ?? this.stepCount,
     );
   }
 
@@ -107,6 +125,7 @@ class WalkSession extends Equatable {
     'pausedAt': pausedAt?.toIso8601String(),
     'completedAt': completedAt?.toIso8601String(),
     'maxSpeedKmh': maxSpeedKmh,
+    'stepCount': stepCount,
   };
 
   factory WalkSession.fromJson(Map<String, dynamic> json) => WalkSession(
@@ -125,9 +144,10 @@ class WalkSession extends Equatable {
         ? DateTime.parse(json['completedAt'] as String)
         : null,
     maxSpeedKmh: (json['maxSpeedKmh'] as num?)?.toDouble() ?? 0.0,
+    stepCount: json['stepCount'] as int? ?? 0,
   );
 
   @override
   List<Object?> get props =>
-      [id, startedAt, state, distanceMeters, activeMilliseconds, completedAt];
+      [id, startedAt, state, distanceMeters, activeMilliseconds, completedAt, stepCount];
 }

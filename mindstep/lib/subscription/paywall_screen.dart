@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import '../app.dart';
 import '../core/constants/app_colors.dart';
@@ -54,8 +55,12 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           gradient: AppColors.brandGradient,
                           boxShadow: AppColors.cyanGlow,
                         ),
-                        child: const Center(
-                          child: Text('🌊', style: TextStyle(fontSize: 40)),
+                        child: Center(
+                          child: PhosphorIcon(
+                            PhosphorIcons.waves(PhosphorIconsStyle.fill),
+                            color: Colors.white,
+                            size: 40,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),

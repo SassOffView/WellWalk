@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:uuid/uuid.dart';
@@ -329,7 +330,11 @@ class _Opening extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🌊', style: TextStyle(fontSize: 52)),
+          PhosphorIcon(
+            PhosphorIcons.waves(PhosphorIconsStyle.fill),
+            color: AppColors.cyan,
+            size: 52,
+          ),
           if (isLoading) ...[
             const SizedBox(height: 36),
             const SizedBox(
@@ -362,7 +367,11 @@ class _PhraseView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('🌊', style: TextStyle(fontSize: 30)),
+          PhosphorIcon(
+            PhosphorIcons.waves(PhosphorIconsStyle.fill),
+            color: AppColors.cyan,
+            size: 30,
+          ),
           const SizedBox(height: 44),
           FadeTransition(
             opacity: animation,
@@ -411,7 +420,11 @@ class _CtaView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('🌊', style: TextStyle(fontSize: 28)),
+          PhosphorIcon(
+            PhosphorIcons.waves(PhosphorIconsStyle.fill),
+            color: AppColors.cyan,
+            size: 28,
+          ),
           const SizedBox(height: 36),
           FadeTransition(
             opacity: animation,
@@ -509,7 +522,11 @@ class _CapturingView extends StatelessWidget {
           // Barra superiore
           Row(
             children: [
-              const Text('🌊', style: TextStyle(fontSize: 22)),
+              PhosphorIcon(
+                PhosphorIcons.waves(PhosphorIconsStyle.fill),
+                color: AppColors.cyan,
+                size: 22,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

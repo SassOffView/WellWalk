@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 
 import '../../app.dart';
 import '../../core/models/notification_preferences.dart';
+import '../../core/models/user_profile.dart';
 import 'setup_notifications_screen.dart';
 import 'setup_ai_provider_screen.dart';
+import 'setup_goals_screen.dart';
 
 /// Coordinator screen per gli step extra di onboarding:
-/// Step 3 → Notifiche  |  Step 4 → AI provider
+/// Step 3 → Notifiche  |  Step 4 → AI provider  |  Step 5 → Obiettivi
 class SetupExtrasScreen extends StatefulWidget {
   const SetupExtrasScreen({super.key});
 
@@ -19,6 +21,19 @@ class SetupExtrasScreen extends StatefulWidget {
 class _SetupExtrasScreenState extends State<SetupExtrasScreen> {
   final _pageController = PageController();
   NotificationPreferences _notifPrefs = NotificationPreferences.defaults;
+  UserProfile? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final services = context.read<AppServices>();
+    final profile = await services.db.loadUserProfile();
+    if (mounted) setState(() => _profile = profile);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,9 +65,38 @@ class _SetupExtrasScreenState extends State<SetupExtrasScreen> {
                 curve: Curves.easeInOut,
               ),
               onNext: (config) async {
-                // Salva preferenze notifiche e programma avvisi
+                // Salva preferenze notifiche
                 await services.applyNotificationPreferences(_notifPrefs);
-                if (mounted) context.go('/home');
+                // Vai allo step obiettivi
+                if (mounted) {
+                  _pageController.nextPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  );
+                }
+              },
+            ),
+
+            // ── Step 5: Obiettivi giornalieri ─────────────────────────────
+            Builder(
+              builder: (ctx) {
+                final profile = _profile;
+                if (profile == null) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
+                }
+                return SetupGoalsScreen(
+                  profile: profile,
+                  onBack: () => _pageController.previousPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  ),
+                  onDone: (updated) async {
+                    await services.db.saveUserProfile(updated);
+                    if (mounted) context.go('/home');
+                  },
+                );
               },
             ),
           ],

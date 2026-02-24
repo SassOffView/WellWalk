@@ -1,11 +1,15 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pedometer/pedometer.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../../app.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/models/daily_insight.dart';
 import '../../../core/models/day_data.dart';
+import '../../../core/models/user_profile.dart';
 import '../../../core/models/walk_session.dart';
 import '../../../core/services/gps_service.dart';
 import '../../../shared/widgets/ms_card.dart';
@@ -15,10 +19,18 @@ class WalkWidget extends StatefulWidget {
     super.key,
     this.initialDayData,
     this.onWalkCompleted,
+    this.insightForPopup,
+    this.userProfile,
   });
 
   final DayData? initialDayData;
   final VoidCallback? onWalkCompleted;
+
+  /// Insight AI da mostrare come popup al avvio camminata
+  final DailyInsight? insightForPopup;
+
+  /// Profilo utente per leggere gli obiettivi giornalieri
+  final UserProfile? userProfile;
 
   @override
   State<WalkWidget> createState() => _WalkWidgetState();
@@ -29,6 +41,12 @@ class _WalkWidgetState extends State<WalkWidget>
   late AnimationController _pulseCtrl;
   WalkSession? _session;
   bool _requestingPermission = false;
+  bool _insightShown = false;
+
+  // Pedometro
+  int _stepCountBase = 0;
+  int _currentSteps = 0;
+  Stream<StepCount>? _stepCountStream;
 
   GpsService get _gps => context.read<AppServices>().gps;
 
@@ -51,10 +69,40 @@ class _WalkWidgetState extends State<WalkWidget>
     };
   }
 
+  void _initPedometer() {
+    try {
+      _stepCountStream = Pedometer.stepCountStream;
+      _stepCountStream?.listen(
+        (event) {
+          if (!mounted) return;
+          if (_stepCountBase == 0) {
+            _stepCountBase = event.steps;
+          }
+          final steps = event.steps - _stepCountBase;
+          setState(() => _currentSteps = steps > 0 ? steps : 0);
+          // Aggiorna session con i passi
+          final s = _session;
+          if (s != null && s.isActive) {
+            _gps.currentSession; // trigger update
+          }
+        },
+        onError: (_) {},
+        cancelOnError: false,
+      );
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = context.read<AppServices>();
     final session = _session;
+    final profile = widget.userProfile;
+
+    final stepGoal = profile?.stepGoal ?? 8000;
+    final walkMinGoal = profile?.walkMinutesGoal ?? 30;
+    // brainstorm minutes viene dai dayData
+    final brainstormMin = widget.initialDayData?.brainstormMinutes ?? 0;
+    final brainstormGoal = profile?.brainstormMinutesGoal ?? 10;
 
     return MsCard(
       child: Column(
@@ -62,7 +110,8 @@ class _WalkWidgetState extends State<WalkWidget>
           // Header
           Row(
             children: [
-              const Text('🚶', style: TextStyle(fontSize: 20)),
+              PhosphorIcon(PhosphorIcons.personSimpleWalk(),
+                  size: 20, color: AppColors.cyan),
               const SizedBox(width: 8),
               Text(
                 AppStrings.walkTitle,
@@ -72,26 +121,50 @@ class _WalkWidgetState extends State<WalkWidget>
           ),
           const SizedBox(height: 20),
 
-          // Progress ring + timer
+          // ── Tre anelli concentrici + timer centrale ──────────────────
           SizedBox(
-            width: 180,
-            height: 180,
+            width: 220,
+            height: 220,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Background ring
+                // Anello esterno: passi
                 CustomPaint(
-                  size: const Size(180, 180),
+                  size: const Size(220, 220),
                   painter: _RingPainter(
-                    progress: _ringProgress(session),
+                    progress: _stepsProgress(session, stepGoal),
                     color: AppColors.cyan,
-                    backgroundColor: AppColors.cyan.withOpacity(0.1),
-                    strokeWidth: 12,
-                    isActive: session?.isActive ?? false,
+                    bgColor: AppColors.cyan.withOpacity(0.1),
+                    strokeWidth: 10,
+                    radius: 107,
                   ),
                 ),
 
-                // Timer text
+                // Anello medio: minuti camminata
+                CustomPaint(
+                  size: const Size(220, 220),
+                  painter: _RingPainter(
+                    progress: _walkMinProgress(session, walkMinGoal),
+                    color: const Color(0xFF4CAF50),
+                    bgColor: const Color(0xFF4CAF50).withOpacity(0.1),
+                    strokeWidth: 10,
+                    radius: 87,
+                  ),
+                ),
+
+                // Anello interno: minuti brainstorm
+                CustomPaint(
+                  size: const Size(220, 220),
+                  painter: _RingPainter(
+                    progress: (brainstormMin / brainstormGoal).clamp(0.0, 1.0),
+                    color: const Color(0xFF9C27B0),
+                    bgColor: const Color(0xFF9C27B0).withOpacity(0.1),
+                    strokeWidth: 10,
+                    radius: 67,
+                  ),
+                ),
+
+                // Timer centrale
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -99,11 +172,12 @@ class _WalkWidgetState extends State<WalkWidget>
                       session?.formattedTime ?? '00:00',
                       style: TextStyle(
                         fontFamily: 'Courier New',
-                        fontSize: 36,
+                        fontSize: 58,
                         fontWeight: FontWeight.w600,
                         color: session?.isActive ?? false
                             ? AppColors.cyan
                             : Theme.of(context).textTheme.bodyLarge?.color,
+                        height: 1.0,
                       ),
                     ),
                     if (session?.isPaused ?? false)
@@ -122,6 +196,29 @@ class _WalkWidgetState extends State<WalkWidget>
             ),
           ),
 
+          const SizedBox(height: 12),
+
+          // Legenda anelli
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _RingLegend(
+                color: AppColors.cyan,
+                label: '${_currentSteps > 0 ? _currentSteps : (session?.stepCount ?? 0)}/${stepGoal} ${AppStrings.ringSteps}',
+              ),
+              const SizedBox(width: 12),
+              _RingLegend(
+                color: const Color(0xFF4CAF50),
+                label: '${session?.activeMinutes ?? 0}/${walkMinGoal} ${AppStrings.ringWalkMin}',
+              ),
+              const SizedBox(width: 12),
+              _RingLegend(
+                color: const Color(0xFF9C27B0),
+                label: '$brainstormMin/${brainstormGoal} ${AppStrings.ringBrainMin}',
+              ),
+            ],
+          ),
+
           const SizedBox(height: 16),
 
           // Stats row
@@ -131,17 +228,17 @@ class _WalkWidgetState extends State<WalkWidget>
               _StatChip(
                 label: AppStrings.walkKm,
                 value: session?.formattedDistance ?? '0.00',
-                emoji: '📍',
+                icon: PhosphorIcons.mapPin(),
               ),
               _StatChip(
                 label: AppStrings.walkSpeed,
                 value: session?.formattedSpeed ?? '0.0',
-                emoji: '⚡',
+                icon: PhosphorIcons.lightning(),
               ),
               _StatChip(
                 label: AppStrings.walkCalories,
                 value: session?.formattedCalories ?? '0',
-                emoji: '🔥',
+                icon: PhosphorIcons.flame(),
               ),
             ],
           ),
@@ -170,7 +267,8 @@ class _WalkWidgetState extends State<WalkWidget>
                     strokeWidth: 2,
                   ),
                 )
-              : const Icon(Icons.play_arrow),
+              : PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill),
+                  size: 18),
           label: Text(AppStrings.walkStart),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -188,7 +286,7 @@ class _WalkWidgetState extends State<WalkWidget>
           Expanded(
             child: OutlinedButton.icon(
               onPressed: _pauseWalk,
-              icon: const Icon(Icons.pause),
+              icon: PhosphorIcon(PhosphorIcons.pause(), size: 18),
               label: Text(AppStrings.walkPause),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -202,7 +300,8 @@ class _WalkWidgetState extends State<WalkWidget>
           Expanded(
             child: ElevatedButton.icon(
               onPressed: _resumeWalk,
-              icon: const Icon(Icons.play_arrow),
+              icon: PhosphorIcon(
+                  PhosphorIcons.play(PhosphorIconsStyle.fill), size: 18),
               label: Text(AppStrings.walkResume),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -215,7 +314,8 @@ class _WalkWidgetState extends State<WalkWidget>
         const SizedBox(width: 8),
         OutlinedButton.icon(
           onPressed: () => _stopWalk(services),
-          icon: const Icon(Icons.stop, color: AppColors.error),
+          icon: PhosphorIcon(PhosphorIcons.stop(PhosphorIconsStyle.fill),
+              color: AppColors.error, size: 18),
           label: Text(
             AppStrings.walkStop,
             style: const TextStyle(color: AppColors.error),
@@ -232,6 +332,8 @@ class _WalkWidgetState extends State<WalkWidget>
     );
   }
 
+  // ── Walk logic ────────────────────────────────────────────────────────
+
   Future<void> _startWalk(AppServices services) async {
     setState(() => _requestingPermission = true);
 
@@ -244,21 +346,32 @@ class _WalkWidgetState extends State<WalkWidget>
     if (!hasPerm) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text(AppStrings.walkLocationPermissionDeny)),
+          const SnackBar(
+              content: Text(AppStrings.walkLocationPermissionDeny)),
         );
       }
       return;
     }
 
+    // Reset pedometro
+    _stepCountBase = 0;
+    _currentSteps = 0;
+    _initPedometer();
+
     await _gps.startWalk();
 
-    // Notifica ongoing per foreground
     if (mounted) {
       await services.notifications.showWalkOngoing(
         distance: '0.00',
         time: '00:00',
         isPaused: false,
       );
+
+      // Mostra insight come popup (solo la prima volta)
+      if (!_insightShown && widget.insightForPopup != null) {
+        _insightShown = true;
+        _showInsightPopup(widget.insightForPopup!);
+      }
     }
   }
 
@@ -290,13 +403,12 @@ class _WalkWidgetState extends State<WalkWidget>
     final completed = _gps.stopWalk();
     if (completed == null) return;
 
-    // Cancella notifica ongoing
+    // Aggiorna step count nella session
+    final withSteps = completed.copyWith(stepCount: _currentSteps);
+
     await services.notifications.cancelWalkOngoing();
-
     if (!mounted) return;
-
-    // Mostra riepilogo
-    _showWalkSummary(services, completed);
+    _showWalkSummary(services, withSteps);
   }
 
   void _showWalkSummary(AppServices services, WalkSession session) {
@@ -319,11 +431,8 @@ class _WalkWidgetState extends State<WalkWidget>
 
   Future<void> _saveWalk(AppServices services, WalkSession session) async {
     final today = DateTime.now();
-
-    // Salva nel DB
     await services.db.saveWalkSession(session, today);
 
-    // Controlla badge walk (FIX BUG #2 PWA)
     final dayData = await services.db.loadDayData(today);
     final newBadges = await services.badges.onWalkCompleted(
       walkMinutes: session.activeMinutes,
@@ -331,7 +440,6 @@ class _WalkWidgetState extends State<WalkWidget>
       dayData: dayData,
     );
 
-    // Sync Health Connect (Pro)
     if (services.isPro) {
       final profile = await services.db.loadUserProfile();
       await services.health.syncWalkSession(
@@ -340,15 +448,18 @@ class _WalkWidgetState extends State<WalkWidget>
       );
     }
 
-    setState(() => _session = null);
+    setState(() {
+      _session = null;
+      _currentSteps = 0;
+      _stepCountBase = 0;
+    });
     widget.onWalkCompleted?.call();
 
-    // Mostra badge sbloccati
     if (newBadges.isNotEmpty && mounted) {
       for (final badge in newBadges) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🏅 Traguardo: ${badge.name}!'),
+            content: Text('Traguardo: ${badge.name}!'),
             backgroundColor: AppColors.success,
           ),
         );
@@ -356,10 +467,83 @@ class _WalkWidgetState extends State<WalkWidget>
     }
   }
 
-  double _ringProgress(WalkSession? session) {
-    if (session == null) return 0.0;
-    // Anello basato sui minuti (obiettivo 30 min = 100%)
-    return (session.activeMinutes / 30.0).clamp(0.0, 1.0);
+  // ── Insight popup ─────────────────────────────────────────────────────
+
+  void _showInsightPopup(DailyInsight insight) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  PhosphorIcon(PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                      color: AppColors.cyan, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Il tuo insight di oggi',
+                    style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                insight.insight,
+                style: Theme.of(ctx)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(height: 1.55),
+              ),
+              if (insight.walkTip != null && insight.walkTip!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyan.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    insight.walkTip!,
+                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                          color: AppColors.cyan,
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Inizia la camminata'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Progressi anelli ─────────────────────────────────────────────────
+
+  double _stepsProgress(WalkSession? session, int goal) {
+    final steps = _currentSteps > 0 ? _currentSteps : (session?.stepCount ?? 0);
+    if (goal <= 0) return 0.0;
+    return (steps / goal).clamp(0.0, 1.0);
+  }
+
+  double _walkMinProgress(WalkSession? session, int goal) {
+    if (session == null || goal <= 0) return 0.0;
+    return (session.activeMinutes / goal).clamp(0.0, 1.0);
   }
 
   @override
@@ -371,34 +555,33 @@ class _WalkWidgetState extends State<WalkWidget>
   }
 }
 
-// ── Ring Painter ─────────────────────────────────────────────────────────────
+// ── Triple Ring Painter ────────────────────────────────────────────────────────
 
 class _RingPainter extends CustomPainter {
   const _RingPainter({
     required this.progress,
     required this.color,
-    required this.backgroundColor,
+    required this.bgColor,
     required this.strokeWidth,
-    required this.isActive,
+    required this.radius,
   });
 
   final double progress;
   final Color color;
-  final Color backgroundColor;
+  final Color bgColor;
   final double strokeWidth;
-  final bool isActive;
+  final double radius; // distanza dal centro
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = (min(size.width, size.height) - strokeWidth) / 2;
 
     // Background ring
     canvas.drawCircle(
       center,
       radius,
       Paint()
-        ..color = backgroundColor
+        ..color = bgColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth,
     );
@@ -409,7 +592,7 @@ class _RingPainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
     canvas.drawArc(
       rect,
-      -pi / 2, // Start from top
+      -pi / 2,
       2 * pi * progress,
       false,
       Paint()
@@ -422,7 +605,37 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RingPainter old) =>
-      old.progress != progress || old.isActive != isActive;
+      old.progress != progress || old.radius != radius;
+}
+
+// ── Ring Legend chip ──────────────────────────────────────────────────────────
+
+class _RingLegend extends StatelessWidget {
+  const _RingLegend({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context)
+              .textTheme
+              .labelSmall
+              ?.copyWith(fontSize: 10),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Stat Chip ─────────────────────────────────────────────────────────────────
@@ -431,18 +644,18 @@ class _StatChip extends StatelessWidget {
   const _StatChip({
     required this.label,
     required this.value,
-    required this.emoji,
+    required this.icon,
   });
 
   final String label;
   final String value;
-  final String emoji;
+  final PhosphorIconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 20)),
+        PhosphorIcon(icon, size: 18, color: AppColors.cyan),
         const SizedBox(height: 4),
         Text(
           value,
@@ -485,10 +698,8 @@ class _WalkSummarySheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Handle
           Container(
-            width: 40,
-            height: 4,
+            width: 40, height: 4,
             decoration: BoxDecoration(
               color: AppColors.lightBorder,
               borderRadius: BorderRadius.circular(2),
@@ -496,7 +707,11 @@ class _WalkSummarySheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          const Text('🎉', style: TextStyle(fontSize: 48)),
+          PhosphorIcon(
+            PhosphorIcons.star(PhosphorIconsStyle.fill),
+            size: 48,
+            color: AppColors.warning,
+          ),
           const SizedBox(height: 12),
           Text(
             AppStrings.walkCompleted,
@@ -509,18 +724,28 @@ class _WalkSummarySheet extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // Stats grid
           Row(
             children: [
-              _SummaryStat(label: 'Distanza', value: '${session.formattedDistance} km', emoji: '📍'),
-              _SummaryStat(label: 'Tempo', value: session.formattedTime, emoji: '⏱️'),
-              _SummaryStat(label: 'Velocità', value: '${session.formattedSpeed} km/h', emoji: '⚡'),
-              _SummaryStat(label: 'Calorie', value: '${session.formattedCalories} kcal', emoji: '🔥'),
+              _SummaryStat(
+                  label: 'Distanza',
+                  value: '${session.formattedDistance} km',
+                  icon: PhosphorIcons.mapPin()),
+              _SummaryStat(
+                  label: 'Tempo',
+                  value: session.formattedTime,
+                  icon: PhosphorIcons.timer()),
+              _SummaryStat(
+                  label: 'Passi',
+                  value: '${session.stepCount}',
+                  icon: PhosphorIcons.footprints()),
+              _SummaryStat(
+                  label: 'Calorie',
+                  value: '${session.formattedCalories} kcal',
+                  icon: PhosphorIcons.flame()),
             ],
           ),
           const SizedBox(height: 24),
 
-          // Buttons
           Row(
             children: [
               Expanded(
@@ -534,7 +759,8 @@ class _WalkSummarySheet extends StatelessWidget {
                 flex: 2,
                 child: ElevatedButton.icon(
                   onPressed: onSave,
-                  icon: const Icon(Icons.check),
+                  icon: PhosphorIcon(PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                      size: 18),
                   label: const Text(AppStrings.walkSave),
                 ),
               ),
@@ -550,25 +776,25 @@ class _SummaryStat extends StatelessWidget {
   const _SummaryStat({
     required this.label,
     required this.value,
-    required this.emoji,
+    required this.icon,
   });
 
   final String label;
   final String value;
-  final String emoji;
+  final PhosphorIconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Column(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 22)),
+          PhosphorIcon(icon, size: 20, color: AppColors.cyan),
           const SizedBox(height: 4),
           Text(
             value,
             style: const TextStyle(
               fontWeight: FontWeight.w700,
-              fontSize: 13,
+              fontSize: 12,
               color: AppColors.cyan,
             ),
             textAlign: TextAlign.center,

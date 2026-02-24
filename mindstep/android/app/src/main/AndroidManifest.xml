@@ -17,6 +17,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
 
+    <!-- ── Pedometro (passi nativi) ─────────────────────────────────── -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+
     <!-- ── Microfono (Speech-to-text Pro) ───────────────────────────── -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -188,9 +189,10 @@ class _ProgressOverview extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          Text(
-            '🏅',
-            style: const TextStyle(fontSize: 48),
+          PhosphorIcon(
+            PhosphorIcons.medal(PhosphorIconsStyle.fill),
+            color: Colors.amber,
+            size: 48,
           ),
         ],
       ),
@@ -224,13 +226,13 @@ class _CategoryFilter extends StatelessWidget {
 
     final labels = {
       null: 'Tutti',
-      BadgeCategory.walk: '🚶 Walk',
-      BadgeCategory.distance: '📍 Km',
-      BadgeCategory.duration: '⏱️ Tempo',
-      BadgeCategory.routine: '✅ Routine',
-      BadgeCategory.streak: '🔥 Streak',
-      BadgeCategory.brainstorm: '💭 Mente',
-      BadgeCategory.special: '⭐ Speciali',
+      BadgeCategory.walk: 'Walk',
+      BadgeCategory.distance: 'Km',
+      BadgeCategory.duration: 'Tempo',
+      BadgeCategory.routine: 'Routine',
+      BadgeCategory.streak: 'Streak',
+      BadgeCategory.brainstorm: 'Mente',
+      BadgeCategory.special: 'Speciali',
     };
 
     return SizedBox(
@@ -479,17 +481,33 @@ class _BadgeDetailSheet extends StatelessWidget {
                   : AppColors.cyan.withOpacity(0.06),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(
-              isUnlocked
-                  ? '✅ ${status.badge.unlockMessage}'
-                  : '🔒 ${status.badge.description}',
-              style: TextStyle(
-                color: isUnlocked ? AppColors.success : null,
-                fontStyle: isUnlocked ? FontStyle.italic : null,
-                fontWeight: FontWeight.w500,
-                height: 1.5,
-              ),
-              textAlign: TextAlign.center,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PhosphorIcon(
+                  isUnlocked
+                      ? PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)
+                      : PhosphorIcons.lockSimple(PhosphorIconsStyle.fill),
+                  color: isUnlocked ? AppColors.success : AppColors.cyan,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isUnlocked
+                        ? status.badge.unlockMessage
+                        : status.badge.description,
+                    style: TextStyle(
+                      color: isUnlocked ? AppColors.success : null,
+                      fontStyle: isUnlocked ? FontStyle.italic : null,
+                      fontWeight: FontWeight.w500,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
             ),
           ),
 

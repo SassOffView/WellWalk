@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -350,7 +351,8 @@ class _DayDetail extends StatelessWidget {
             // Walk info
             if (data.hasWalk && data.walk != null) ...[
               _DetailRow(
-                emoji: '🚶',
+                icon: PhosphorIcons.personSimpleWalk(),
+                iconColor: AppColors.cyan,
                 label: 'Camminata',
                 value: '${data.walk!.distanceKm.toStringAsFixed(2)} km · ${data.walk!.activeMinutes} min',
               ),
@@ -360,7 +362,8 @@ class _DayDetail extends StatelessWidget {
             // Routine
             if (data.routineCompleted > 0) ...[
               _DetailRow(
-                emoji: '✅',
+                icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                iconColor: AppColors.success,
                 label: 'Routine',
                 value: '${data.routineCompleted}/${data.routineTotal} completate (${data.routinePercent.round()}%)',
               ),
@@ -370,7 +373,8 @@ class _DayDetail extends StatelessWidget {
             // Brain
             if (data.hasBrainstorm) ...[
               _DetailRow(
-                emoji: '💭',
+                icon: PhosphorIcons.brain(PhosphorIconsStyle.fill),
+                iconColor: const Color(0xFF9C27B0),
                 label: 'Brainstorm',
                 value: 'Nota salvata',
               ),
@@ -407,14 +411,21 @@ class _DayDetail extends StatelessWidget {
 }
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.emoji, required this.label, required this.value});
-  final String emoji, label, value;
+  const _DetailRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.value,
+  });
+  final PhosphorIconData icon;
+  final Color iconColor;
+  final String label, value;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 18)),
+        PhosphorIcon(icon, size: 18, color: iconColor),
         const SizedBox(width: 8),
         Expanded(
           child: Column(

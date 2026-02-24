@@ -15,7 +15,7 @@ import '../../constants/app_badges.dart';
 /// Usato da tutti gli utenti (Free e Pro come cache locale)
 class LocalDbService {
   static const _dbName = 'mindstep.db';
-  static const _dbVersion = 2; // v2: tabella sessions per il rituale
+  static const _dbVersion = 3; // v3: brainstorm_minutes + step_count
 
   static const _tableDay = 'day_data';
   static const _tableRoutines = 'routines';
@@ -45,7 +45,8 @@ class LocalDbService {
       CREATE TABLE $_tableDay (
         date TEXT PRIMARY KEY,
         brainstorm_note TEXT DEFAULT '',
-        brainstorm_count INTEGER DEFAULT 0
+        brainstorm_count INTEGER DEFAULT 0,
+        brainstorm_minutes INTEGER DEFAULT 0
       )
     ''');
 
@@ -85,10 +86,16 @@ class LocalDbService {
     await _createSessionsTable(db);
   }
 
-  /// Migrazione DB v1 → v2
+  /// Migrazione DB v1 → v3
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await _createSessionsTable(db);
+    }
+    if (oldVersion < 3) {
+      // Aggiunge colonna brainstorm_minutes alla tabella day_data
+      await db.execute(
+        'ALTER TABLE $_tableDay ADD COLUMN brainstorm_minutes INTEGER DEFAULT 0',
+      );
     }
   }
 
@@ -210,9 +217,11 @@ class LocalDbService {
     );
     String brainstorm = '';
     int brainstormCount = 0;
+    int brainstormMinutes = 0;
     if (dayRows.isNotEmpty) {
       brainstorm = dayRows.first['brainstorm_note'] as String? ?? '';
       brainstormCount = dayRows.first['brainstorm_count'] as int? ?? 0;
+      brainstormMinutes = dayRows.first['brainstorm_minutes'] as int? ?? 0;
     }
 
     return DayData(
@@ -222,6 +231,7 @@ class LocalDbService {
       completedRoutineIds: completedIds,
       brainstormNote: brainstorm,
       brainstormCount: brainstormCount,
+      brainstormMinutes: brainstormMinutes,
     );
   }
 
@@ -255,6 +265,34 @@ class LocalDbService {
       await database.update(
         _tableDay,
         {'brainstorm_note': note, 'brainstorm_count': currentCount + 1},
+        where: 'date = ?',
+        whereArgs: [dateKey],
+      );
+    }
+  }
+
+  /// Aggiunge minuti di brainstorming al totale giornaliero
+  Future<void> addBrainstormMinutes(DateTime date, int minutes) async {
+    if (minutes <= 0) return;
+    final database = await db;
+    final dateKey = _dateKey(date);
+    final existing = await database.query(
+      _tableDay,
+      where: 'date = ?',
+      whereArgs: [dateKey],
+    );
+    if (existing.isEmpty) {
+      await database.insert(_tableDay, {
+        'date': dateKey,
+        'brainstorm_note': '',
+        'brainstorm_count': 0,
+        'brainstorm_minutes': minutes,
+      });
+    } else {
+      final current = existing.first['brainstorm_minutes'] as int? ?? 0;
+      await database.update(
+        _tableDay,
+        {'brainstorm_minutes': current + minutes},
         where: 'date = ?',
         whereArgs: [dateKey],
       );

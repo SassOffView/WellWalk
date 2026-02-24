@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -12,8 +13,11 @@ import 'core/services/notification_service.dart';
 import 'core/services/health_service.dart';
 import 'core/services/ai_insight_service.dart';
 import 'core/services/tts_service.dart';
+import 'core/services/quote_service.dart';
+import 'core/services/coaching_service.dart';
 import 'core/models/subscription_status.dart';
 import 'core/models/notification_preferences.dart';
+import 'core/models/badge_model.dart';
 import 'core/constants/app_strings.dart';
 
 import 'features/onboarding/onboarding_screen.dart';
@@ -25,6 +29,7 @@ import 'features/analytics/analytics_screen.dart';
 import 'features/achievements/achievements_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/session/session_screen.dart';
+import 'features/coach/coach_screen.dart';
 import 'subscription/paywall_screen.dart';
 
 /// Provider globale per dependency injection
@@ -32,10 +37,12 @@ class AppServices extends ChangeNotifier {
   final LocalDbService db = LocalDbService();
   late final BadgeService badges;
   late final AiInsightService aiInsight;
+  late final CoachingService coaching;
   final GpsService gps = GpsService();
   final NotificationService notifications = NotificationService();
   final HealthService health = HealthService();
   final TtsService tts = TtsService();
+  final QuoteService quotes = QuoteService();
 
   SubscriptionStatus _subscription = SubscriptionStatus.freePlan;
   ThemeMode _themeMode = ThemeMode.system;
@@ -49,6 +56,7 @@ class AppServices extends ChangeNotifier {
   AppServices() {
     badges = BadgeService(db);
     aiInsight = AiInsightService(db);
+    coaching = CoachingService(aiInsight);
     badges.onBadgeUnlocked = _onBadgeUnlocked;
     _init();
   }
@@ -61,7 +69,6 @@ class AppServices extends ChangeNotifier {
       tts.initialize(),
     ]);
 
-    // Carica preferenze notifiche e ripristina scheduling
     final sp = await SharedPreferences.getInstance();
     final notifJson = sp.getString('notification_prefs');
     if (notifJson != null) {
@@ -73,7 +80,6 @@ class AppServices extends ChangeNotifier {
     }
   }
 
-  /// Salva le preferenze di notifica e programma gli avvisi
   Future<void> applyNotificationPreferences(NotificationPreferences prefs) async {
     _notifPrefs = prefs;
     notifyListeners();
@@ -114,7 +120,6 @@ class AppServices extends ChangeNotifier {
     }
   }
 
-  /// Aggiorna il messaggio della notifica mattutina con l'insight AI
   Future<void> updateMorningMessageWithInsight(String aiMessage) async {
     if (!_notifPrefs.dailyReminderEnabled) return;
     await notifications.scheduleMorningReminder(
@@ -124,12 +129,12 @@ class AppServices extends ChangeNotifier {
     );
   }
 
-  void _onBadgeUnlocked(dynamic badge) async {
+  void _onBadgeUnlocked(BadgeModel badge) async {
     final statuses = await db.loadAllBadgeStatuses(isPro);
-    final index = statuses.indexWhere((s) => s.badge.id == (badge as dynamic).id);
+    final index = statuses.indexWhere((s) => s.badge.id == badge.id);
     await notifications.showBadgeUnlocked(
-      badgeName: badge.name as String,
-      message: badge.unlockMessage as String,
+      badgeName: badge.name,
+      message: badge.unlockMessage,
       badgeIndex: index >= 0 ? index : 0,
     );
   }
@@ -173,7 +178,8 @@ class MindStepApp extends StatelessWidget {
       final profile = await services.db.loadUserProfile();
       final isOnboarded = profile?.hasCompletedOnboarding ?? false;
       final loc = state.matchedLocation;
-      final inOnboardingFlow = loc.startsWith('/onboarding') || loc.startsWith('/setup');
+      final inOnboardingFlow =
+          loc.startsWith('/onboarding') || loc.startsWith('/setup');
       if (!isOnboarded && !inOnboardingFlow) {
         return '/onboarding';
       }
@@ -222,6 +228,10 @@ class MindStepApp extends StatelessWidget {
         builder: (_, __) => const SessionScreen(),
       ),
       GoRoute(
+        path: '/coach',
+        builder: (_, __) => const CoachScreen(),
+      ),
+      GoRoute(
         path: '/paywall',
         builder: (_, __) => const PaywallScreen(),
       ),
@@ -229,7 +239,7 @@ class MindStepApp extends StatelessWidget {
   );
 }
 
-/// Shell con bottom navigation bar
+/// Shell con bottom navigation bar — icone Phosphor
 class MainShell extends StatefulWidget {
   const MainShell({super.key, required this.child});
   final Widget child;
@@ -268,31 +278,36 @@ class _MainShellState extends State<MainShell> {
             setState(() => _selectedIndex = i);
             context.go(_tabs[i]);
           },
-          items: const [
+          items: [
             BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home',
+              icon: PhosphorIcon(PhosphorIcons.house(), size: 22),
+              activeIcon: PhosphorIcon(
+                  PhosphorIcons.house(PhosphorIconsStyle.fill), size: 22),
+              label: AppStrings.navHome,
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month_outlined),
-              activeIcon: Icon(Icons.calendar_month),
-              label: 'Storico',
+              icon: PhosphorIcon(PhosphorIcons.calendarDots(), size: 22),
+              activeIcon: PhosphorIcon(
+                  PhosphorIcons.calendarDots(PhosphorIconsStyle.fill), size: 22),
+              label: AppStrings.navHistory,
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              activeIcon: Icon(Icons.bar_chart),
-              label: 'Dati',
+              icon: PhosphorIcon(PhosphorIcons.chartBar(), size: 22),
+              activeIcon: PhosphorIcon(
+                  PhosphorIcons.chartBar(PhosphorIconsStyle.fill), size: 22),
+              label: AppStrings.navAnalytics,
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.emoji_events_outlined),
-              activeIcon: Icon(Icons.emoji_events),
-              label: 'Traguardi',
+              icon: PhosphorIcon(PhosphorIcons.trophy(), size: 22),
+              activeIcon: PhosphorIcon(
+                  PhosphorIcons.trophy(PhosphorIconsStyle.fill), size: 22),
+              label: AppStrings.navAchievements,
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.tune_outlined),
-              activeIcon: Icon(Icons.tune),
-              label: 'Altro',
+              icon: PhosphorIcon(PhosphorIcons.gear(), size: 22),
+              activeIcon: PhosphorIcon(
+                  PhosphorIcons.gear(PhosphorIconsStyle.fill), size: 22),
+              label: AppStrings.navSettings,
             ),
           ],
         ),

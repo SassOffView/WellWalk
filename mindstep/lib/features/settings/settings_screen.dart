@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../app.dart';
@@ -62,7 +63,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: MsGradientCard(
                       child: Row(
                         children: [
-                          const Text('⭐', style: TextStyle(fontSize: 32)),
+                          PhosphorIcon(
+                            PhosphorIcons.star(PhosphorIconsStyle.fill),
+                            color: Colors.amber,
+                            size: 32,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -386,21 +391,24 @@ class _ThemeSelector extends StatelessWidget {
     return Row(
       children: [
         _ThemeChip(
-          label: '☀️ Chiaro',
+          label: 'Chiaro',
+          icon: PhosphorIcons.sun(),
           mode: ThemeMode.light,
           current: current,
           onChange: onChange,
         ),
         const SizedBox(width: 8),
         _ThemeChip(
-          label: '🌙 Scuro',
+          label: 'Scuro',
+          icon: PhosphorIcons.moon(),
           mode: ThemeMode.dark,
           current: current,
           onChange: onChange,
         ),
         const SizedBox(width: 8),
         _ThemeChip(
-          label: '⚙️ Auto',
+          label: 'Auto',
+          icon: PhosphorIcons.deviceMobile(),
           mode: ThemeMode.system,
           current: current,
           onChange: onChange,
@@ -413,11 +421,13 @@ class _ThemeSelector extends StatelessWidget {
 class _ThemeChip extends StatelessWidget {
   const _ThemeChip({
     required this.label,
+    required this.icon,
     required this.mode,
     required this.current,
     required this.onChange,
   });
   final String label;
+  final PhosphorIconData icon;
   final ThemeMode mode;
   final ThemeMode current;
   final ValueChanged<ThemeMode> onChange;
@@ -428,7 +438,7 @@ class _ThemeChip extends StatelessWidget {
     return GestureDetector(
       onTap: () => onChange(mode),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.cyan : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
@@ -436,13 +446,24 @@ class _ThemeChip extends StatelessWidget {
             color: isSelected ? AppColors.cyan : AppColors.lightBorder,
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : null,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(
+              icon,
+              size: 14,
+              color: isSelected ? Colors.white : null,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : null,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -471,7 +492,8 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
       children: [
         _SwitchRow(
           label: 'Reminder mattutino (8:00)',
-          emoji: '🌅',
+          icon: PhosphorIcons.sun(),
+          iconColor: Colors.orange,
           value: _morning,
           onChange: (v) {
             setState(() => _morning = v);
@@ -485,7 +507,8 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
         ),
         _SwitchRow(
           label: 'Reminder routine (10:00)',
-          emoji: '✅',
+          icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+          iconColor: AppColors.success,
           value: _routine,
           onChange: (v) {
             setState(() => _routine = v);
@@ -498,7 +521,8 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
         ),
         _SwitchRow(
           label: 'Reminder camminata (18:00)',
-          emoji: '🚶',
+          icon: PhosphorIcons.personSimpleWalk(),
+          iconColor: AppColors.cyan,
           value: _walk,
           onChange: (v) {
             setState(() => _walk = v);
@@ -512,7 +536,8 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
         if (widget.services.isPro)
           _SwitchRow(
             label: 'Walking Brain (21:00)',
-            emoji: '💭',
+            icon: PhosphorIcons.brain(),
+            iconColor: const Color(0xFF9C27B0),
             value: _brain,
             onChange: (v) {
               setState(() => _brain = v);
@@ -531,11 +556,14 @@ class _NotificationSettingsState extends State<_NotificationSettings> {
 class _SwitchRow extends StatelessWidget {
   const _SwitchRow({
     required this.label,
-    required this.emoji,
+    required this.icon,
+    required this.iconColor,
     required this.value,
     required this.onChange,
   });
-  final String label, emoji;
+  final String label;
+  final PhosphorIconData icon;
+  final Color iconColor;
   final bool value;
   final ValueChanged<bool> onChange;
 
@@ -545,7 +573,7 @@ class _SwitchRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 18)),
+          PhosphorIcon(icon, size: 18, color: iconColor),
           const SizedBox(width: 8),
           Expanded(
             child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
@@ -615,9 +643,13 @@ class _AiCoachSectionState extends State<_AiCoachSection> {
           else
             Row(
               children: [
-                Text(
-                  _config.providerEmoji,
-                  style: const TextStyle(fontSize: 22),
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: Color(_config.providerColorValue),
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(

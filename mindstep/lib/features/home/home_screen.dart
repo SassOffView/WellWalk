@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/models/daily_insight.dart';
 import '../../core/models/day_data.dart';
 import '../../core/models/user_profile.dart';
+import '../../core/services/quote_service.dart';
 import '../../shared/widgets/ms_card.dart';
-import '../../shared/widgets/daily_insight_card.dart';
 import 'walk/walk_widget.dart';
 import 'routine/routine_widget.dart';
 import 'brainstorm/brainstorm_widget.dart';
@@ -24,9 +26,8 @@ class _HomeScreenState extends State<HomeScreen> {
   UserProfile? _profile;
   DayData? _dayData;
   DailyInsight? _insight;
-  String _quote = '';
+  DailyQuote? _quote;
   bool _loading = true;
-  bool _insightLoading = false;
   bool _sessionDone = false;
 
   @override
@@ -45,10 +46,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final profile = results[0] as UserProfile?;
     final dayData = results[1] as DayData;
     final sessionDone = results[2] as bool;
-    final quote = _getDailyQuote();
 
-    // Controlla badge al caricamento (FIX BUG #1 PWA)
+    // Controlla badge al caricamento
     await services.badges.checkAllBadgesOnStartup(isPro: services.isPro);
+
+    // Carica quote giornaliera
+    DailyQuote? quote;
+    try {
+      quote = await services.quotes
+          .getDailyQuote(profile?.preferredLanguage ?? 'it');
+    } catch (_) {}
 
     if (mounted) {
       setState(() {
@@ -59,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
 
-      // Carica insight AI in background (non blocca il caricamento UI)
+      // Carica insight AI in background (solo per il popup della camminata)
       if (profile != null) {
         _loadInsight(services, profile);
       }
@@ -67,43 +74,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadInsight(AppServices services, UserProfile profile) async {
-    if (!mounted) return;
-    setState(() => _insightLoading = true);
     try {
       final insight = await services.aiInsight.getDailyInsight(profile);
       if (mounted) {
-        setState(() {
-          _insight = insight;
-          _insightLoading = false;
-        });
-        // Aggiorna notifica mattutina con messaggio AI personalizzato
+        setState(() => _insight = insight);
         if (insight.generatedBy != 'locale') {
           services.updateMorningMessageWithInsight(insight.motivationalMessage);
         }
       }
-    } catch (_) {
-      if (mounted) setState(() => _insightLoading = false);
-    }
-  }
-
-  Future<void> _refreshInsight() async {
-    if (_profile == null) return;
-    final services = context.read<AppServices>();
-    setState(() => _insightLoading = true);
-    try {
-      final insight = await services.aiInsight.refreshTodayInsight(_profile!);
-      if (mounted) {
-        setState(() {
-          _insight = insight;
-          _insightLoading = false;
-        });
-        if (insight.generatedBy != 'locale') {
-          services.updateMorningMessageWithInsight(insight.motivationalMessage);
-        }
-      }
-    } catch (_) {
-      if (mounted) setState(() => _insightLoading = false);
-    }
+    } catch (_) {}
   }
 
   Future<void> _reload() async {
@@ -118,14 +97,6 @@ class _HomeScreenState extends State<HomeScreen> {
         _sessionDone = results[1] as bool;
       });
     }
-  }
-
-  String _getDailyQuote() {
-    final quotes = AppStrings.localQuotes;
-    final dayOfYear = DateTime.now().difference(
-      DateTime(DateTime.now().year, 1, 1),
-    ).inDays;
-    return quotes[dayOfYear % quotes.length];
   }
 
   String _getGreeting() {
@@ -164,7 +135,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${_getGreeting()}, ${_profile?.firstName ?? 'amico'}! 👋',
+                              '${_getGreeting()}, ${_profile?.firstName ?? 'amico'}!',
                               style: Theme.of(context)
                                   .textTheme
                                   .headlineSmall
@@ -178,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                      // Logo / Avatar
+                      // Avatar
                       Container(
                         width: 44,
                         height: 44,
@@ -186,8 +157,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           gradient: AppColors.brandGradient,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Center(
-                          child: Text('🌊', style: TextStyle(fontSize: 22)),
+                        child: Center(
+                          child: PhosphorIcon(
+                            PhosphorIcons.waves(PhosphorIconsStyle.fill),
+                            color: Colors.white,
+                            size: 22,
+                          ),
                         ),
                       ),
                     ],
@@ -195,36 +170,57 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // ── Quote ─────────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: MsCard(
-                    color: isDark
-                        ? AppColors.navyMid
-                        : AppColors.cyan.withOpacity(0.05),
-                    borderColor: AppColors.cyan.withOpacity(0.2),
-                    child: Row(
-                      children: [
-                        Text(
-                          '💬',
-                          style: const TextStyle(fontSize: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            _quote,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              fontStyle: FontStyle.italic,
-                              height: 1.5,
+              // ── Quote motivazionale (API, fissa) ──────────────────────
+              if (_quote != null)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: MsCard(
+                      color: isDark
+                          ? AppColors.navyMid
+                          : AppColors.cyan.withOpacity(0.05),
+                      borderColor: AppColors.cyan.withOpacity(0.2),
+                      child: Row(
+                        children: [
+                          PhosphorIcon(
+                            PhosphorIcons.quotes(PhosphorIconsStyle.fill),
+                            color: AppColors.cyan,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '"${_quote!.text}"',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                    fontStyle: FontStyle.italic,
+                                    height: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '— ${_quote!.author}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .labelSmall
+                                      ?.copyWith(
+                                    color: AppColors.cyan,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
 
               // ── Session Start Card ────────────────────────────────────
               SliverToBoxAdapter(
@@ -240,26 +236,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // ── AI Daily Insight ──────────────────────────────────────
-              if (_insight != null || _insightLoading)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: DailyInsightCard(
-                      insight: _insight,
-                      isLoading: _insightLoading,
-                      onRefresh: _insightLoading ? null : _refreshInsight,
-                    ),
-                  ),
-                ),
-
-              // ── Walk Widget ───────────────────────────────────────────
+              // ── Walk Widget (insight passato per popup) ───────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: WalkWidget(
                     initialDayData: _dayData,
                     onWalkCompleted: _reload,
+                    insightForPopup: _insight,
+                    userProfile: _profile,
                   ),
                 ),
               ),
@@ -306,27 +291,27 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MsSectionHeader(title: '🎵 ${AppStrings.musicTitle}'),
+          MsSectionHeader(title: AppStrings.musicTitle),
           Row(
             children: [
               _MusicButton(
                 label: 'Spotify',
                 color: const Color(0xFF1DB954),
-                icon: '🎧',
+                icon: PhosphorIcons.musicNote(),
                 url: 'https://open.spotify.com',
               ),
               const SizedBox(width: 8),
               _MusicButton(
                 label: 'YouTube',
                 color: const Color(0xFFFF0000),
-                icon: '▶️',
+                icon: PhosphorIcons.youtubeLogo(),
                 url: 'https://music.youtube.com',
               ),
               const SizedBox(width: 8),
               _MusicButton(
                 label: 'Apple',
                 color: const Color(0xFFFA243C),
-                icon: '🎵',
+                icon: PhosphorIcons.appleLogo(),
                 url: 'https://music.apple.com',
               ),
             ],
@@ -338,11 +323,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _formatDate() {
     final now = DateTime.now();
-    final days = [
+    const days = [
       'lunedì', 'martedì', 'mercoledì', 'giovedì',
       'venerdì', 'sabato', 'domenica'
     ];
-    final months = [
+    const months = [
       'gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno',
       'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'
     ];
@@ -366,20 +351,16 @@ class _SessionStartCard extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 36, height: 36,
               decoration: BoxDecoration(
                 color: AppColors.cyan.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: const Center(
-                child: Text(
-                  '✓',
-                  style: TextStyle(
-                    color: AppColors.cyan,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+              child: Center(
+                child: PhosphorIcon(
+                  PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                  color: AppColors.cyan,
+                  size: 20,
                 ),
               ),
             ),
@@ -424,7 +405,11 @@ class _SessionStartCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            const Text('🌊', style: TextStyle(fontSize: 34)),
+            PhosphorIcon(
+              PhosphorIcons.waves(PhosphorIconsStyle.fill),
+              size: 34,
+              color: AppColors.cyan,
+            ),
             const SizedBox(width: 16),
             const Expanded(
               child: Column(
@@ -480,15 +465,16 @@ class _MusicButton extends StatelessWidget {
 
   final String label;
   final Color color;
-  final String icon;
+  final PhosphorIconData icon;
   final String url;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          // url_launcher - launchUrl(Uri.parse(url));
+        onTap: () async {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) await launchUrl(uri);
         },
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
@@ -499,7 +485,7 @@ class _MusicButton extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Text(icon, style: const TextStyle(fontSize: 20)),
+              PhosphorIcon(icon, size: 20, color: color),
               const SizedBox(height: 4),
               Text(
                 label,

@@ -54,6 +54,17 @@ class AiProviderConfig extends Equatable {
     }
   }
 
+  // Color dot for provider (used in place of emoji)
+  int get providerColorValue {
+    switch (provider) {
+      case AiProvider.none:       return 0xFF9E9E9E; // grey
+      case AiProvider.gemini:     return 0xFF2196F3; // blue
+      case AiProvider.openai:     return 0xFF4CAF50; // green
+      case AiProvider.claude:     return 0xFFFF9800; // orange
+      case AiProvider.azureOpenai: return 0xFF9C27B0; // purple
+    }
+  }
+
   String get apiKeyHint {
     switch (provider) {
       case AiProvider.gemini:

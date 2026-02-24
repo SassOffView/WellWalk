@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_strings.dart';
 
@@ -47,7 +48,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 controller: _pageController,
                 onPageChanged: (i) => setState(() => _currentPage = i),
                 itemCount: _slides.length,
-                itemBuilder: (_, i) => _OnboardingSlide(slide: _slides[i]),
+                itemBuilder: (_, i) => _OnboardingSlide(slide: _slides[i], index: i),
               ),
             ),
 
@@ -126,20 +127,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 }
 
+// Maps onboarding slide index → Phosphor icon factory
+final _onboardingIcons = <PhosphorIconData Function()>[
+  () => PhosphorIcons.waves(PhosphorIconsStyle.fill),
+  () => PhosphorIcons.footprints(PhosphorIconsStyle.fill),
+  () => PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+  () => PhosphorIcons.brain(PhosphorIconsStyle.fill),
+  () => PhosphorIcons.target(PhosphorIconsStyle.fill),
+];
+
 class _OnboardingSlide extends StatelessWidget {
-  const _OnboardingSlide({required this.slide});
+  const _OnboardingSlide({required this.slide, required this.index});
   final Map<String, String> slide;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final iconData = index < _onboardingIcons.length
+        ? _onboardingIcons[index]()
+        : PhosphorIcons.star(PhosphorIconsStyle.fill);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Emoji icon
+          // Phosphor icon
           Container(
             width: 120,
             height: 120,
@@ -153,9 +167,10 @@ class _OnboardingSlide extends StatelessWidget {
               ),
             ),
             child: Center(
-              child: Text(
-                slide['emoji']!,
-                style: const TextStyle(fontSize: 56),
+              child: PhosphorIcon(
+                iconData,
+                size: 56,
+                color: AppColors.cyan,
               ),
             ),
           ),

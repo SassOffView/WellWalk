@@ -276,4 +276,37 @@ class AppStrings {
   static const musicYouTube = 'YouTube Music';
   static const musicApple = 'Apple Music';
   static const musicCustom = 'Link personalizzato';
+
+  // ── GOALS (onboarding e anelli) ───────────────────────────────────────
+  static const goalsTitle = 'I tuoi obiettivi';
+  static const goalsSubtitle = 'Personalizza gli obiettivi giornalieri';
+  static const goalsStepLabel = 'Passi obiettivo';
+  static const goalsWalkLabel = 'Minuti di camminata';
+  static const goalsBrainLabel = 'Minuti di brainstorming';
+  static const goalsLanguageLabel = 'Lingua delle citazioni';
+  static const goalsLanguageIt = 'Italiano';
+  static const goalsLanguageEn = 'English';
+  static const goalsContinue = 'Inizia il viaggio';
+
+  // ── COACH IA ──────────────────────────────────────────────────────────
+  static const coachTitle = 'Coach di Chiarezza';
+  static const coachSubtitle = 'Il tuo spazio per pensare meglio';
+  static const coachStart = 'Parla con il tuo Coach IA';
+  static const coachStartFree = 'Coach IA — PRO';
+  static const coachStartFreeDesc = 'Il coaching guidato è disponibile con il piano PRO';
+  static const coachInputHint = 'Scrivi liberamente…';
+  static const coachSend = 'Invia';
+  static const coachEnd = 'Termina sessione';
+  static const coachTyping = 'Il coach sta riflettendo…';
+  static const coachNoProvider = 'Configura un provider AI nelle impostazioni per usare il Coach.';
+
+  // ── EXPORT AI ──────────────────────────────────────────────────────────
+  static const exportTitle = 'Esporta a AI';
+  static const exportCopied = 'Trascrizione copiata negli appunti';
+  static const exportPasteHint = 'Incolla nella chat dell\'AI (premi e tieni premuto → Incolla)';
+
+  // ── ANELLI (walk widget) ───────────────────────────────────────────────
+  static const ringSteps = 'passi';
+  static const ringWalkMin = 'min walk';
+  static const ringBrainMin = 'min brain';
 }

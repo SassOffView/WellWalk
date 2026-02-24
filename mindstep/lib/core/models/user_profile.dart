@@ -11,8 +11,12 @@ class UserProfile extends Equatable {
     this.weightKg,
     this.customMusicUrl,
     this.hasCompletedOnboarding = false,
-    this.hasBrainstormedEver = false, // FLAG GLOBALE (fix bug PWA)
+    this.hasBrainstormedEver = false,
     this.totalBrainstormCount = 0,
+    this.stepGoal = 8000,
+    this.walkMinutesGoal = 30,
+    this.brainstormMinutesGoal = 10,
+    this.preferredLanguage = 'it',
   });
 
   final String name;
@@ -24,24 +28,25 @@ class UserProfile extends Equatable {
   final bool hasCompletedOnboarding;
 
   /// TRUE dopo il PRIMO brainstorm mai salvato (globale, non per-giorno)
-  /// Questo risolve il bug della PWA dove firstBrainstorm era per-giorno
   final bool hasBrainstormedEver;
   final int totalBrainstormCount;
+
+  // ── Daily goals ──────────────────────────────────────────────────────
+  final int stepGoal;             // passi obiettivo giornaliero
+  final int walkMinutesGoal;      // minuti camminata obiettivo
+  final int brainstormMinutesGoal; // minuti brainstorm obiettivo
+  final String preferredLanguage; // 'it' | 'en'
 
   String get firstName => name.split(' ').first;
 
   String get genderLabel {
     switch (gender) {
-      case Gender.male:
-        return 'Uomo';
-      case Gender.female:
-        return 'Donna';
-      case Gender.other:
-        return 'Altro';
+      case Gender.male:   return 'Uomo';
+      case Gender.female: return 'Donna';
+      case Gender.other:  return 'Altro';
     }
   }
 
-  // Peso di default per calcolo calorie (65kg se non specificato)
   double get effectiveWeightKg => weightKg ?? 65.0;
 
   UserProfile copyWith({
@@ -54,6 +59,10 @@ class UserProfile extends Equatable {
     bool? hasCompletedOnboarding,
     bool? hasBrainstormedEver,
     int? totalBrainstormCount,
+    int? stepGoal,
+    int? walkMinutesGoal,
+    int? brainstormMinutesGoal,
+    String? preferredLanguage,
   }) {
     return UserProfile(
       name: name ?? this.name,
@@ -65,6 +74,10 @@ class UserProfile extends Equatable {
       hasCompletedOnboarding: hasCompletedOnboarding ?? this.hasCompletedOnboarding,
       hasBrainstormedEver: hasBrainstormedEver ?? this.hasBrainstormedEver,
       totalBrainstormCount: totalBrainstormCount ?? this.totalBrainstormCount,
+      stepGoal: stepGoal ?? this.stepGoal,
+      walkMinutesGoal: walkMinutesGoal ?? this.walkMinutesGoal,
+      brainstormMinutesGoal: brainstormMinutesGoal ?? this.brainstormMinutesGoal,
+      preferredLanguage: preferredLanguage ?? this.preferredLanguage,
     );
   }
 
@@ -78,6 +91,10 @@ class UserProfile extends Equatable {
     'hasCompletedOnboarding': hasCompletedOnboarding,
     'hasBrainstormedEver': hasBrainstormedEver,
     'totalBrainstormCount': totalBrainstormCount,
+    'stepGoal': stepGoal,
+    'walkMinutesGoal': walkMinutesGoal,
+    'brainstormMinutesGoal': brainstormMinutesGoal,
+    'preferredLanguage': preferredLanguage,
   };
 
   factory UserProfile.guest() => UserProfile(
@@ -97,6 +114,10 @@ class UserProfile extends Equatable {
     hasCompletedOnboarding: json['hasCompletedOnboarding'] as bool? ?? false,
     hasBrainstormedEver: json['hasBrainstormedEver'] as bool? ?? false,
     totalBrainstormCount: json['totalBrainstormCount'] as int? ?? 0,
+    stepGoal: json['stepGoal'] as int? ?? 8000,
+    walkMinutesGoal: json['walkMinutesGoal'] as int? ?? 30,
+    brainstormMinutesGoal: json['brainstormMinutesGoal'] as int? ?? 10,
+    preferredLanguage: json['preferredLanguage'] as String? ?? 'it',
   );
 
   @override
@@ -104,5 +125,6 @@ class UserProfile extends Equatable {
     name, age, gender, createdAt, weightKg,
     customMusicUrl, hasCompletedOnboarding,
     hasBrainstormedEver, totalBrainstormCount,
+    stepGoal, walkMinutesGoal, brainstormMinutesGoal, preferredLanguage,
   ];
 }
