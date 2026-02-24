@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -34,6 +35,11 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
   bool _isRecording = false;
   bool _speechAvailable = false;
   bool _hasChanges = false;
+  bool _expanded = false; // collapsible panel
+
+  // Timer display per elapsed brainstorm time
+  Timer? _displayTimer;
+  int _elapsedSeconds = 0;
 
   // Tracciamento durata sessione brainstorm
   DateTime? _sessionStart;
@@ -47,6 +53,7 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
       if (!_hasChanges) {
         _sessionStart ??= DateTime.now();
         setState(() => _hasChanges = true);
+        _startDisplayTimer();
       }
     });
   }
@@ -65,6 +72,19 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
     if (mounted) setState(() {});
   }
 
+  void _startDisplayTimer() {
+    if (_displayTimer?.isActive ?? false) return;
+    _displayTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _elapsedSeconds++);
+    });
+  }
+
+  String get _formattedElapsed {
+    final m = _elapsedSeconds ~/ 60;
+    final s = _elapsedSeconds % 60;
+    return '${m.toString().padLeft(1, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = context.read<AppServices>();
@@ -73,20 +93,71 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          Row(
-            children: [
-              PhosphorIcon(PhosphorIcons.brain(), size: 20, color: AppColors.cyan),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  AppStrings.brainTitle,
-                  style: Theme.of(context).textTheme.titleLarge,
+          // ── Header collassabile ─────────────────────────────────────
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                PhosphorIcon(
+                  PhosphorIcons.brain(
+                    _isRecording
+                        ? PhosphorIconsStyle.fill
+                        : PhosphorIconsStyle.regular,
+                  ),
+                  size: 20,
+                  color: _isRecording ? AppColors.error : AppColors.cyan,
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Brainstorming $_formattedElapsed',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                // Mic quick-action
+                if (services.isPro && _speechAvailable)
+                  GestureDetector(
+                    onTap: () {
+                      if (_isRecording) {
+                        _stopRecording();
+                      } else {
+                        if (!_expanded) setState(() => _expanded = true);
+                        _startRecording();
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: PhosphorIcon(
+                        _isRecording
+                            ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
+                            : PhosphorIcons.microphone(),
+                        size: 20,
+                        color:
+                            _isRecording ? AppColors.error : AppColors.cyan,
+                      ),
+                    ),
+                  ),
+                PhosphorIcon(
+                  _expanded
+                      ? PhosphorIcons.caretUp()
+                      : PhosphorIcons.caretDown(),
+                  size: 16,
+                  color: Colors.grey,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
+
+          // ── Contenuto collassabile ──────────────────────────────────
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            child: _expanded
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
 
           // ── Coach IA (PRO) button ───────────────────────────────────
           _CoachButton(
@@ -252,7 +323,11 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
                       vertical: 10, horizontal: 12),
                 ),
               ),
-            ],
+                    ],
+                  )
+                    ],
+                  )
+                : const SizedBox.shrink(),
           ),
         ],
       ),
@@ -385,6 +460,7 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
 
   @override
   void dispose() {
+    _displayTimer?.cancel();
     _controller.dispose();
     _speechToText.stop();
     super.dispose();

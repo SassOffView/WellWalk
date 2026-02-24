@@ -128,11 +128,11 @@ class _WalkWidgetState extends State<WalkWidget>
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Anello esterno: passi
+                // Anello esterno: Cammino (minuti walk) — cyan
                 CustomPaint(
                   size: const Size(220, 220),
                   painter: _RingPainter(
-                    progress: _stepsProgress(session, stepGoal),
+                    progress: _walkMinProgress(session, walkMinGoal),
                     color: AppColors.cyan,
                     bgColor: AppColors.cyan.withOpacity(0.1),
                     strokeWidth: 10,
@@ -140,25 +140,25 @@ class _WalkWidgetState extends State<WalkWidget>
                   ),
                 ),
 
-                // Anello medio: minuti camminata
+                // Anello medio: Passi — purple
                 CustomPaint(
                   size: const Size(220, 220),
                   painter: _RingPainter(
-                    progress: _walkMinProgress(session, walkMinGoal),
-                    color: const Color(0xFF4CAF50),
-                    bgColor: const Color(0xFF4CAF50).withOpacity(0.1),
+                    progress: _stepsProgress(session, stepGoal),
+                    color: const Color(0xFF9C27B0),
+                    bgColor: const Color(0xFF9C27B0).withOpacity(0.1),
                     strokeWidth: 10,
                     radius: 87,
                   ),
                 ),
 
-                // Anello interno: minuti brainstorm
+                // Anello interno: Brain (brainstorm) — green
                 CustomPaint(
                   size: const Size(220, 220),
                   painter: _RingPainter(
                     progress: (brainstormMin / brainstormGoal).clamp(0.0, 1.0),
-                    color: const Color(0xFF9C27B0),
-                    bgColor: const Color(0xFF9C27B0).withOpacity(0.1),
+                    color: const Color(0xFF4CAF50),
+                    bgColor: const Color(0xFF4CAF50).withOpacity(0.1),
                     strokeWidth: 10,
                     radius: 67,
                   ),
@@ -169,10 +169,10 @@ class _WalkWidgetState extends State<WalkWidget>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      session?.formattedTime ?? '00:00',
+                      session?.formattedTimeFull ?? '00:00:00',
                       style: TextStyle(
                         fontFamily: 'Courier New',
-                        fontSize: 58,
+                        fontSize: 38,
                         fontWeight: FontWeight.w600,
                         color: session?.isActive ?? false
                             ? AppColors.cyan
@@ -180,16 +180,22 @@ class _WalkWidgetState extends State<WalkWidget>
                         height: 1.0,
                       ),
                     ),
-                    if (session?.isPaused ?? false)
-                      Text(
-                        'IN PAUSA',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.warning,
-                          letterSpacing: 1.5,
-                        ),
+                    const SizedBox(height: 4),
+                    Text(
+                      session?.isPaused ?? false ? 'IN PAUSA' : 'WALK TIME',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: session?.isPaused ?? false
+                            ? AppColors.warning
+                            : Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.color
+                                ?.withOpacity(0.5),
+                        letterSpacing: 1.5,
                       ),
+                    ),
                   ],
                 ),
               ],
@@ -198,49 +204,49 @@ class _WalkWidgetState extends State<WalkWidget>
 
           const SizedBox(height: 12),
 
-          // Legenda anelli
+          // Legenda anelli: Cammino • Passi • Brain
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _RingLegend(
-                color: AppColors.cyan,
-                label: '${_currentSteps > 0 ? _currentSteps : (session?.stepCount ?? 0)}/${stepGoal} ${AppStrings.ringSteps}',
-              ),
-              const SizedBox(width: 12),
-              _RingLegend(
-                color: const Color(0xFF4CAF50),
-                label: '${session?.activeMinutes ?? 0}/${walkMinGoal} ${AppStrings.ringWalkMin}',
-              ),
-              const SizedBox(width: 12),
-              _RingLegend(
-                color: const Color(0xFF9C27B0),
-                label: '$brainstormMin/${brainstormGoal} ${AppStrings.ringBrainMin}',
-              ),
+              _RingLegend(color: AppColors.cyan, label: 'Cammino'),
+              const SizedBox(width: 16),
+              _RingLegend(color: const Color(0xFF9C27B0), label: 'Passi'),
+              const SizedBox(width: 16),
+              _RingLegend(color: const Color(0xFF4CAF50), label: 'Brain'),
             ],
           ),
 
           const SizedBox(height: 16),
 
-          // Stats row
+          // Stats inline: X.X KM  |  X.X KM/H  |  X KCAL
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _StatChip(
-                label: AppStrings.walkKm,
-                value: session?.formattedDistance ?? '0.00',
-                icon: PhosphorIcons.mapPin(),
+              _InlineStat(
+                value: session?.formattedDistance ?? '0.0',
+                unit: 'KM',
               ),
-              _StatChip(
-                label: AppStrings.walkSpeed,
+              _statSep(),
+              _InlineStat(
                 value: session?.formattedSpeed ?? '0.0',
-                icon: PhosphorIcons.lightning(),
+                unit: 'KM/H',
               ),
-              _StatChip(
-                label: AppStrings.walkCalories,
+              _statSep(),
+              _InlineStat(
                 value: session?.formattedCalories ?? '0',
-                icon: PhosphorIcons.flame(),
+                unit: 'KCAL',
               ),
             ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // ── Riga Passi (stima) con progress bar ──────────────────────
+          _PassiRow(
+            steps: _currentSteps > 0
+                ? _currentSteps
+                : (session?.stepCount ?? 0),
+            goal: stepGoal,
           ),
 
           const SizedBox(height: 20),
@@ -269,7 +275,7 @@ class _WalkWidgetState extends State<WalkWidget>
                 )
               : PhosphorIcon(PhosphorIcons.play(PhosphorIconsStyle.fill),
                   size: 18),
-          label: Text(AppStrings.walkStart),
+          label: const Text('Inizia WalkingBrain'),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(
@@ -638,39 +644,110 @@ class _RingLegend extends StatelessWidget {
   }
 }
 
-// ── Stat Chip ─────────────────────────────────────────────────────────────────
+// ── Inline Stat (X.X KM | X.X KM/H | X KCAL) ────────────────────────────────
 
-class _StatChip extends StatelessWidget {
-  const _StatChip({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  final String label;
+class _InlineStat extends StatelessWidget {
+  const _InlineStat({required this.value, required this.unit});
   final String value;
-  final PhosphorIconData icon;
+  final String unit;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        PhosphorIcon(icon, size: 18, color: AppColors.cyan),
-        const SizedBox(height: 4),
         Text(
           value,
           style: const TextStyle(
             fontFamily: 'Courier New',
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: FontWeight.w700,
             color: AppColors.cyan,
           ),
         ),
+        const SizedBox(height: 2),
         Text(
-          label,
-          style: Theme.of(context).textTheme.labelSmall,
+          unit,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontSize: 9,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w600,
+              ),
         ),
       ],
+    );
+  }
+}
+
+Widget _statSep() => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        '|',
+        style: TextStyle(
+          color: Colors.grey.withOpacity(0.3),
+          fontSize: 18,
+        ),
+      ),
+    );
+
+// ── Passi Row (stima) ─────────────────────────────────────────────────────────
+
+class _PassiRow extends StatelessWidget {
+  const _PassiRow({required this.steps, required this.goal});
+  final int steps;
+  final int goal;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = goal > 0 ? (steps / goal).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          PhosphorIcon(
+            PhosphorIcons.personSimpleWalk(),
+            size: 18,
+            color: const Color(0xFF9C27B0),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      '$steps PASSI (STIMA)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF9C27B0),
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '/ $goal',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            fontSize: 10,
+                          ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 5,
+                    backgroundColor: const Color(0xFF9C27B0).withOpacity(0.12),
+                    valueColor: const AlwaysStoppedAnimation(Color(0xFF9C27B0)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

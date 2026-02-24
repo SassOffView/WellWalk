@@ -86,6 +86,15 @@ class WalkSession extends Equatable {
     return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
+  /// Always HH:MM:SS — used in the walk widget timer display
+  String get formattedTimeFull {
+    final s = activeSeconds;
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final sec = s % 60;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+  }
+
   String get formattedDistance => distanceKm.toStringAsFixed(2);
   String get formattedSpeed => avgSpeedKmh.toStringAsFixed(1);
   String get formattedCalories => caloriesBurned().toStringAsFixed(0);

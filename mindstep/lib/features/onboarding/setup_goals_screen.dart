@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_strings.dart';
 import '../../core/models/user_profile.dart';
 
-/// Step onboarding: obiettivi giornalieri e lingua delle citazioni.
-/// Viene chiamato dopo SetupExtrasScreen e prima di '/home'.
+/// Schermata onboarding: obiettivi giornalieri — dark navy, text fields.
 class SetupGoalsScreen extends StatefulWidget {
   const SetupGoalsScreen({
     super.key,
@@ -23,25 +22,37 @@ class SetupGoalsScreen extends StatefulWidget {
 }
 
 class _SetupGoalsScreenState extends State<SetupGoalsScreen> {
-  late int _stepGoal;
-  late int _walkMinutesGoal;
-  late int _brainstormMinutesGoal;
+  late final TextEditingController _stepsCtrl;
+  late final TextEditingController _walkCtrl;
+  late final TextEditingController _voiceCtrl;
+  late final TextEditingController _brainstormCtrl;
   late String _language;
 
   @override
   void initState() {
     super.initState();
-    _stepGoal = widget.profile.stepGoal;
-    _walkMinutesGoal = widget.profile.walkMinutesGoal;
-    _brainstormMinutesGoal = widget.profile.brainstormMinutesGoal;
+    _stepsCtrl = TextEditingController(text: widget.profile.stepGoal.toString());
+    _walkCtrl = TextEditingController(text: widget.profile.walkMinutesGoal.toString());
+    _voiceCtrl = TextEditingController(text: widget.profile.dailyVoiceSessionsGoal.toString());
+    _brainstormCtrl = TextEditingController(text: widget.profile.brainstormMinutesGoal.toString());
     _language = widget.profile.preferredLanguage;
+  }
+
+  @override
+  void dispose() {
+    _stepsCtrl.dispose();
+    _walkCtrl.dispose();
+    _voiceCtrl.dispose();
+    _brainstormCtrl.dispose();
+    super.dispose();
   }
 
   void _done() {
     final updated = widget.profile.copyWith(
-      stepGoal: _stepGoal,
-      walkMinutesGoal: _walkMinutesGoal,
-      brainstormMinutesGoal: _brainstormMinutesGoal,
+      stepGoal: int.tryParse(_stepsCtrl.text) ?? 8000,
+      walkMinutesGoal: int.tryParse(_walkCtrl.text) ?? 30,
+      dailyVoiceSessionsGoal: int.tryParse(_voiceCtrl.text) ?? 2,
+      brainstormMinutesGoal: int.tryParse(_brainstormCtrl.text) ?? 10,
       preferredLanguage: _language,
       hasCompletedOnboarding: true,
     );
@@ -51,283 +62,320 @@ class _SetupGoalsScreenState extends State<SetupGoalsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Row(
-                children: [
-                  if (widget.onBack != null)
-                    IconButton(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.navyDark, Color(0xFF0D1B3E)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              if (widget.onBack != null)
+                Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 8, 0, 0),
+                    child: IconButton(
                       onPressed: widget.onBack,
                       icon: PhosphorIcon(
                         PhosphorIcons.arrowLeft(),
-                        color: Theme.of(context).textTheme.bodyLarge?.color,
+                        color: Colors.white60,
                       ),
-                    ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          AppStrings.goalsTitle,
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          AppStrings.goalsSubtitle,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
 
-            const SizedBox(height: 8),
-
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── Lingua ─────────────────────────────────────────
-                    _SectionLabel(
-                      icon: PhosphorIcons.translate(),
-                      label: AppStrings.goalsLanguageLabel,
-                    ),
-                    const SizedBox(height: 10),
-                    _LanguageSelector(
-                      selected: _language,
-                      onChanged: (lang) => setState(() => _language = lang),
-                    ),
-
-                    const SizedBox(height: 28),
-
-                    // ── Passi ─────────────────────────────────────────
-                    _SectionLabel(
-                      icon: PhosphorIcons.footprints(),
-                      label: AppStrings.goalsStepLabel,
-                    ),
-                    const SizedBox(height: 4),
-                    _GoalSlider(
-                      value: _stepGoal.toDouble(),
-                      min: 2000,
-                      max: 20000,
-                      divisions: 18,
-                      displayValue: '$_stepGoal passi',
-                      color: AppColors.cyan,
-                      onChanged: (v) => setState(() => _stepGoal = v.round()),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Minuti camminata ──────────────────────────────
-                    _SectionLabel(
-                      icon: PhosphorIcons.personSimpleWalk(),
-                      label: AppStrings.goalsWalkLabel,
-                    ),
-                    const SizedBox(height: 4),
-                    _GoalSlider(
-                      value: _walkMinutesGoal.toDouble(),
-                      min: 10,
-                      max: 90,
-                      divisions: 16,
-                      displayValue: '$_walkMinutesGoal min',
-                      color: const Color(0xFF4CAF50),
-                      onChanged: (v) =>
-                          setState(() => _walkMinutesGoal = v.round()),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // ── Minuti brainstorming ──────────────────────────
-                    _SectionLabel(
-                      icon: PhosphorIcons.brain(),
-                      label: AppStrings.goalsBrainLabel,
-                    ),
-                    const SizedBox(height: 4),
-                    _GoalSlider(
-                      value: _brainstormMinutesGoal.toDouble(),
-                      min: 3,
-                      max: 30,
-                      divisions: 9,
-                      displayValue: '$_brainstormMinutesGoal min',
-                      color: const Color(0xFF9C27B0),
-                      onChanged: (v) =>
-                          setState(() => _brainstormMinutesGoal = v.round()),
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // Nota
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppColors.cyan.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: AppColors.cyan.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        children: [
-                          PhosphorIcon(
-                            PhosphorIcons.info(),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // ── Header Icon ──────────────────────────────────
+                      Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: AppColors.cyan.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.cyan.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Center(
+                          child: PhosphorIcon(
+                            PhosphorIcons.target(PhosphorIconsStyle.fill),
                             color: AppColors.cyan,
-                            size: 16,
+                            size: 32,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Puoi modificare questi obiettivi in qualsiasi momento dalle impostazioni.',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(color: AppColors.cyan),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // ── Title ───────────────────────────────────────
+                      const Text(
+                        'Obiettivi Personali',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Definisci i tuoi target giornalieri.\nModificabili in qualsiasi momento dalle Impostazioni.',
+                        style: TextStyle(
+                          color: Colors.white60,
+                          fontSize: 13,
+                          height: 1.5,
+                          fontFamily: 'Inter',
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+
+                      // ── Info box ─────────────────────────────────────
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.cyan.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.cyan.withOpacity(0.25),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            PhosphorIcon(
+                              PhosphorIcons.info(PhosphorIconsStyle.fill),
+                              color: AppColors.cyan,
+                              size: 16,
                             ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Text(
+                                'I 3 anelli del timer si riempiranno progressivamente al raggiungimento di questi obiettivi.',
+                                style: TextStyle(
+                                  color: AppColors.cyan,
+                                  fontSize: 12,
+                                  height: 1.5,
+                                  fontFamily: 'Inter',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // ── Form card ────────────────────────────────────
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.10),
                           ),
-                        ],
+                        ),
+                        child: Column(
+                          children: [
+                            // LINGUA
+                            _GoalRow(
+                              label: 'LINGUA / LANGUAGE',
+                              child: _LanguageRow(
+                                selected: _language,
+                                onChanged: (v) => setState(() => _language = v),
+                              ),
+                            ),
+                            _divider(),
+
+                            // PASSI / GIORNO
+                            _GoalRow(
+                              label: 'PASSI / GIORNO',
+                              child: _NumInput(
+                                controller: _stepsCtrl,
+                                hint: '8000',
+                                suffix: 'passi',
+                                color: AppColors.cyan,
+                              ),
+                            ),
+                            _divider(),
+
+                            // MINUTI CAMMINO
+                            _GoalRow(
+                              label: 'MINUTI CAMMINO',
+                              child: _NumInput(
+                                controller: _walkCtrl,
+                                hint: '30',
+                                suffix: 'min',
+                                color: const Color(0xFF4CAF50),
+                              ),
+                            ),
+                            _divider(),
+
+                            // SESSIONI VOICE / GIORNO
+                            _GoalRow(
+                              label: 'SESSIONI VOICE / GIORNO',
+                              child: _NumInput(
+                                controller: _voiceCtrl,
+                                hint: '2',
+                                suffix: 'sess.',
+                                color: const Color(0xFF9C27B0),
+                              ),
+                            ),
+                            _divider(),
+
+                            // MIN BRAINSTORMING
+                            _GoalRow(
+                              label: 'MIN BRAINSTORMING',
+                              child: _NumInput(
+                                controller: _brainstormCtrl,
+                                hint: '10',
+                                suffix: 'min',
+                                color: const Color(0xFF2196F3),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 36),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── CTA ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _done,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.cyan,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 17),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Continua',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'Inter',
                       ),
                     ),
-
-                    const SizedBox(height: 32),
-                  ],
-                ),
-              ),
-            ),
-
-            // CTA
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _done,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  child: const Text(
-                    AppStrings.goalsContinue,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _divider() => Container(
+        height: 1,
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        color: Colors.white.withOpacity(0.07),
+      );
+}
+
+// ── _GoalRow ──────────────────────────────────────────────────────────────────
+
+class _GoalRow extends StatelessWidget {
+  const _GoalRow({required this.label, required this.child});
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.8,
+                fontFamily: 'Inter',
+              ),
+            ),
+          ),
+          child,
+        ],
       ),
     );
   }
 }
 
-// ── Componenti interni ────────────────────────────────────────────────────────
+// ── _NumInput ─────────────────────────────────────────────────────────────────
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.icon, required this.label});
-  final PhosphorIconData icon;
-  final String label;
+class _NumInput extends StatelessWidget {
+  const _NumInput({
+    required this.controller,
+    required this.hint,
+    required this.suffix,
+    required this.color,
+  });
+  final TextEditingController controller;
+  final String hint;
+  final String suffix;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        PhosphorIcon(icon, size: 18, color: AppColors.cyan),
-        const SizedBox(width: 8),
+        SizedBox(
+          width: 68,
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Inter',
+            ),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              hintText: hint,
+              hintStyle: TextStyle(
+                color: color.withOpacity(0.35),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
         Text(
-          label,
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.w600),
-        ),
-      ],
-    );
-  }
-}
-
-class _GoalSlider extends StatelessWidget {
-  const _GoalSlider({
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.divisions,
-    required this.displayValue,
-    required this.color,
-    required this.onChanged,
-  });
-
-  final double value;
-  final double min;
-  final double max;
-  final int divisions;
-  final String displayValue;
-  final Color color;
-  final ValueChanged<double> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            activeTrackColor: color,
-            thumbColor: color,
-            inactiveTrackColor: color.withOpacity(0.2),
-            overlayColor: color.withOpacity(0.1),
-          ),
-          child: Slider(
-            value: value,
-            min: min,
-            max: max,
-            divisions: divisions,
-            onChanged: onChanged,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '${min.round()}',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: color.withOpacity(0.3)),
-                ),
-                child: Text(
-                  displayValue,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              Text(
-                '${max.round()}',
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ],
+          suffix,
+          style: TextStyle(
+            color: color.withOpacity(0.65),
+            fontSize: 12,
+            fontFamily: 'Inter',
           ),
         ),
       ],
@@ -335,12 +383,10 @@ class _GoalSlider extends StatelessWidget {
   }
 }
 
-class _LanguageSelector extends StatelessWidget {
-  const _LanguageSelector({
-    required this.selected,
-    required this.onChanged,
-  });
+// ── _LanguageRow ──────────────────────────────────────────────────────────────
 
+class _LanguageRow extends StatelessWidget {
+  const _LanguageRow({required this.selected, required this.onChanged});
   final String selected;
   final ValueChanged<String> onChanged;
 
@@ -348,16 +394,16 @@ class _LanguageSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _LangChip(
-          label: AppStrings.goalsLanguageIt,
-          flag: '🇮🇹',
+        _LangBtn(
+          label: 'IT — Italiano',
+          code: 'it',
           isSelected: selected == 'it',
           onTap: () => onChanged('it'),
         ),
-        const SizedBox(width: 12),
-        _LangChip(
-          label: AppStrings.goalsLanguageEn,
-          flag: '🇬🇧',
+        const SizedBox(width: 8),
+        _LangBtn(
+          label: 'EN',
+          code: 'en',
           isSelected: selected == 'en',
           onTap: () => onChanged('en'),
         ),
@@ -366,16 +412,15 @@ class _LanguageSelector extends StatelessWidget {
   }
 }
 
-class _LangChip extends StatelessWidget {
-  const _LangChip({
+class _LangBtn extends StatelessWidget {
+  const _LangBtn({
     required this.label,
-    required this.flag,
+    required this.code,
     required this.isSelected,
     required this.onTap,
   });
-
   final String label;
-  final String flag;
+  final String code;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -385,31 +430,25 @@ class _LangChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.cyan.withOpacity(0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+              ? AppColors.cyan.withOpacity(0.18)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSelected ? AppColors.cyan : AppColors.lightBorder,
-            width: isSelected ? 2 : 1,
+            color: isSelected ? AppColors.cyan : Colors.white24,
+            width: isSelected ? 1.5 : 1,
           ),
         ),
-        child: Row(
-          children: [
-            Text(flag, style: const TextStyle(fontSize: 18)),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
-                color: isSelected
-                    ? AppColors.cyan
-                    : Theme.of(context).textTheme.bodyMedium?.color,
-              ),
-            ),
-          ],
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? AppColors.cyan : Colors.white54,
+            fontSize: 11,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+            fontFamily: 'Inter',
+          ),
         ),
       ),
     );

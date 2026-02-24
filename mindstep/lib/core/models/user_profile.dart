@@ -16,6 +16,7 @@ class UserProfile extends Equatable {
     this.stepGoal = 8000,
     this.walkMinutesGoal = 30,
     this.brainstormMinutesGoal = 10,
+    this.dailyVoiceSessionsGoal = 2,
     this.preferredLanguage = 'it',
   });
 
@@ -32,10 +33,11 @@ class UserProfile extends Equatable {
   final int totalBrainstormCount;
 
   // ── Daily goals ──────────────────────────────────────────────────────
-  final int stepGoal;             // passi obiettivo giornaliero
-  final int walkMinutesGoal;      // minuti camminata obiettivo
-  final int brainstormMinutesGoal; // minuti brainstorm obiettivo
-  final String preferredLanguage; // 'it' | 'en'
+  final int stepGoal;                // passi obiettivo giornaliero
+  final int walkMinutesGoal;         // minuti camminata obiettivo
+  final int brainstormMinutesGoal;   // minuti brainstorm obiettivo
+  final int dailyVoiceSessionsGoal;  // sessioni voice obiettivo
+  final String preferredLanguage;    // 'it' | 'en'
 
   String get firstName => name.split(' ').first;
 
@@ -62,6 +64,7 @@ class UserProfile extends Equatable {
     int? stepGoal,
     int? walkMinutesGoal,
     int? brainstormMinutesGoal,
+    int? dailyVoiceSessionsGoal,
     String? preferredLanguage,
   }) {
     return UserProfile(
@@ -77,6 +80,7 @@ class UserProfile extends Equatable {
       stepGoal: stepGoal ?? this.stepGoal,
       walkMinutesGoal: walkMinutesGoal ?? this.walkMinutesGoal,
       brainstormMinutesGoal: brainstormMinutesGoal ?? this.brainstormMinutesGoal,
+      dailyVoiceSessionsGoal: dailyVoiceSessionsGoal ?? this.dailyVoiceSessionsGoal,
       preferredLanguage: preferredLanguage ?? this.preferredLanguage,
     );
   }
@@ -94,6 +98,7 @@ class UserProfile extends Equatable {
     'stepGoal': stepGoal,
     'walkMinutesGoal': walkMinutesGoal,
     'brainstormMinutesGoal': brainstormMinutesGoal,
+    'dailyVoiceSessionsGoal': dailyVoiceSessionsGoal,
     'preferredLanguage': preferredLanguage,
   };
 
@@ -117,6 +122,7 @@ class UserProfile extends Equatable {
     stepGoal: json['stepGoal'] as int? ?? 8000,
     walkMinutesGoal: json['walkMinutesGoal'] as int? ?? 30,
     brainstormMinutesGoal: json['brainstormMinutesGoal'] as int? ?? 10,
+    dailyVoiceSessionsGoal: json['dailyVoiceSessionsGoal'] as int? ?? 2,
     preferredLanguage: json['preferredLanguage'] as String? ?? 'it',
   );
 
@@ -125,6 +131,7 @@ class UserProfile extends Equatable {
     name, age, gender, createdAt, weightKg,
     customMusicUrl, hasCompletedOnboarding,
     hasBrainstormedEver, totalBrainstormCount,
-    stepGoal, walkMinutesGoal, brainstormMinutesGoal, preferredLanguage,
+    stepGoal, walkMinutesGoal, brainstormMinutesGoal,
+    dailyVoiceSessionsGoal, preferredLanguage,
   ];
 }
