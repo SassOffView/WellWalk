@@ -172,7 +172,9 @@ class MindStepApp extends StatelessWidget {
     redirect: (context, state) async {
       final profile = await services.db.loadUserProfile();
       final isOnboarded = profile?.hasCompletedOnboarding ?? false;
-      if (!isOnboarded && !state.matchedLocation.startsWith('/onboarding')) {
+      final loc = state.matchedLocation;
+      final inOnboardingFlow = loc.startsWith('/onboarding') || loc.startsWith('/setup');
+      if (!isOnboarded && !inOnboardingFlow) {
         return '/onboarding';
       }
       return null;
