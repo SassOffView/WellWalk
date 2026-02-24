@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">MindStep</string>
+    <string name="widget_today_description">MindStep – Attività di oggi</string>
+    <string name="widget_stats_description">MindStep – Statistiche settimanali</string>
+</resources>
