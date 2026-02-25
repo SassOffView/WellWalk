@@ -265,6 +265,15 @@ class NotificationService {
     );
   }
 
+  /// Richiede il permesso di notifica (Android 13+).
+  /// Restituisce true se il permesso è stato concesso.
+  Future<bool> requestPermission() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    final granted = await android?.requestNotificationsPermission();
+    return granted ?? false;
+  }
+
   Future<void> cancelAll() async => await _plugin.cancelAll();
 
   // ── HELPER ───────────────────────────────────────────────────────────

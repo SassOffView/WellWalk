@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
@@ -110,9 +111,58 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _maybeShowNotificationPrompt() async {
-    // Mostra popup notifiche solo una volta dopo l'onboarding
-    // Controlla via SharedPreferences se è già stato mostrato
-    // (implementazione leggera con SharedPreferences)
+    const key = 'notification_prompt_shown';
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(key) == true) return;
+    await prefs.setBool(key, true);
+
+    // Breve pausa per lasciar rendere la home prima di mostrare il popup
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+
+    final services = context.read<AppServices>();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.navyMid,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          'Attiva i promemoria',
+          style: TextStyle(
+            color: AppColors.darkText,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        content: const Text(
+          'Vuoi ricevere notifiche per i tuoi promemoria giornalieri e i badge sbloccati?\n\nPuoi cambiare questa scelta in qualsiasi momento nelle impostazioni.',
+          style: TextStyle(color: AppColors.darkTextSecondary, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Non ora',
+              style: TextStyle(color: AppColors.darkTextSecondary),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.cyan,
+              foregroundColor: AppColors.navyDark,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Abilita'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await services.notifications.requestPermission();
+    }
   }
 
   Future<void> _loadInsight(AppServices services, UserProfile profile) async {
