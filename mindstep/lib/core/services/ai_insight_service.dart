@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/app_config.dart';
 import '../models/ai_provider_config.dart';
 import '../models/daily_insight.dart';
 import '../models/day_data.dart';
@@ -101,16 +102,29 @@ class AiInsightService {
     }
 
     // Genera nuovo insight
-    final config = await loadProviderConfig();
-    if (!config.hasValidKey) {
+    final aiConfig = await loadProviderConfig();
+
+    // Raccoglie contesto utente (ultimi 7 giorni)
+    final userContext = await _buildUserContext(profile);
+
+    // Prova prima il backend proxy (se configurato)
+    if (AppConfig.isBackendConfigured) {
+      final backendInsight =
+          await _generateInsightViaBackend(aiConfig, userContext, today);
+      if (backendInsight != null) {
+        _cacheInsight(prefs, cacheKey, backendInsight);
+        return backendInsight;
+      }
+    }
+
+    // Fallback: chiamata diretta al provider (sviluppo / no backend)
+    if (!aiConfig.hasValidKey) {
       final fallback = DailyInsight.localFallback(today);
       _cacheInsight(prefs, cacheKey, fallback);
       return fallback;
     }
 
-    // Raccoglie contesto utente (ultimi 7 giorni)
-    final context = await _buildUserContext(profile);
-    final insight = await _generateInsight(config, context, today);
+    final insight = await _generateInsight(aiConfig, userContext, today);
     _cacheInsight(prefs, cacheKey, insight);
     return insight;
   }
@@ -131,6 +145,19 @@ class AiInsightService {
 
     // Genera frase con AI
     final config = await loadProviderConfig();
+
+    // Prova prima il backend proxy
+    if (AppConfig.isBackendConfigured) {
+      try {
+        final ctx = await _buildMotivationalContext(profile);
+        final phrase = await _getPhraseViaBackend(config, ctx);
+        if (phrase != null && phrase.isNotEmpty) {
+          await prefs.setString(cacheKey, phrase);
+          return phrase;
+        }
+      } catch (_) {}
+    }
+
     if (!config.hasValidKey) {
       final fallback = _localMotivationalPhrase(today);
       await prefs.setString(cacheKey, fallback);
@@ -297,6 +324,72 @@ Rispondi SOLO con la frase. Zero altri caratteri.''';
     }
 
     return sb.toString();
+  }
+
+  // ── Backend proxy calls ───────────────────────────────────────────────
+
+  /// Genera insight chiamando il backend proxy (chiavi lato server)
+  Future<DailyInsight?> _generateInsightViaBackend(
+    AiProviderConfig config,
+    String userContext,
+    DateTime date,
+  ) async {
+    if (config.provider == AiProvider.none) return null;
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/ai/insight'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Secret': AppConfig.appSecret,
+        },
+        body: jsonEncode({
+          'provider': config.provider.name,
+          'userContext': userContext,
+        }),
+      ).timeout(AppConfig.aiTimeout);
+
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return DailyInsight(
+        date: date,
+        insight: data['insight'] as String? ?? '',
+        suggestion: data['suggestion'] as String? ?? '',
+        brainstormPrompt: data['brainstormPrompt'] as String? ?? '',
+        motivationalMessage: data['motivationalMessage'] as String? ?? '',
+        generatedBy: data['generatedBy'] as String? ?? 'backend',
+        routineTip: data['routineTip'] as String?,
+        walkTip: data['walkTip'] as String?,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Genera frase motivazionale via backend proxy
+  Future<String?> _getPhraseViaBackend(
+    AiProviderConfig config,
+    String context,
+  ) async {
+    if (config.provider == AiProvider.none) return null;
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/ai/phrase'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Secret': AppConfig.appSecret,
+        },
+        body: jsonEncode({
+          'provider': config.provider.name,
+          'context': context,
+        }),
+      ).timeout(AppConfig.aiTimeout);
+
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['phrase'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Chiamata AI ──────────────────────────────────────────────────────

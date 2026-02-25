@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 import '../models/ai_provider_config.dart';
 import 'ai_insight_service.dart';
 
@@ -115,8 +116,8 @@ NON fare mai:
 
     final config = await _aiInsight.loadProviderConfig();
 
-    if (!config.hasValidKey) {
-      const fallback = 'Per usare il Coach IA devi prima configurare un provider AI nelle impostazioni.';
+    if (!config.isConfigured && !AppConfig.isBackendConfigured) {
+      const fallback = 'Per usare il Coach IA configura un provider AI nelle impostazioni.';
       _history.add(CoachMessage(
         role: 'assistant',
         content: fallback,
@@ -126,23 +127,30 @@ NON fare mai:
     }
 
     try {
-      // Costruisce i messaggi per l'API
       final messages = _buildMessages();
-
       String? response;
-      switch (config.provider) {
-        case AiProvider.gemini:
-          response = await _callGemini(config.apiKey, messages);
-          break;
-        case AiProvider.openai:
-        case AiProvider.azureOpenai:
-          response = await _callOpenAI(config, messages);
-          break;
-        case AiProvider.claude:
-          response = await _callClaude(config.apiKey, messages);
-          break;
-        case AiProvider.none:
-          response = null;
+
+      // Prova prima il backend proxy (chiavi lato server)
+      if (AppConfig.isBackendConfigured && config.provider != AiProvider.none) {
+        response = await _callBackend(config, messages);
+      }
+
+      // Fallback: chiamata diretta (solo sviluppo, richiede chiave locale)
+      if (response == null && config.hasValidKey) {
+        switch (config.provider) {
+          case AiProvider.gemini:
+            response = await _callGemini(config.apiKey, messages);
+            break;
+          case AiProvider.openai:
+          case AiProvider.azureOpenai:
+            response = await _callOpenAI(config, messages);
+            break;
+          case AiProvider.claude:
+            response = await _callClaude(config.apiKey, messages);
+            break;
+          case AiProvider.none:
+            response = null;
+        }
       }
 
       final reply = response?.trim() ?? _fallbackResponse();
@@ -179,6 +187,33 @@ NON fare mai:
     ];
     final idx = DateTime.now().second % options.length;
     return options[idx];
+  }
+
+  // ── Backend proxy call ───────────────────────────────────────────────
+
+  Future<String?> _callBackend(
+    AiProviderConfig config,
+    List<Map<String, String>> messages,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendUrl}/ai/coach'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Secret': AppConfig.appSecret,
+        },
+        body: jsonEncode({
+          'provider': config.provider.name,
+          'messages': messages,
+        }),
+      ).timeout(AppConfig.aiTimeout);
+
+      if (response.statusCode != 200) return null;
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['reply'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Claude API (con system prompt) ──────────────────────────────────
