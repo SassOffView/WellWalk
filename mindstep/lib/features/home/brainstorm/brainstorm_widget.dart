@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -29,13 +30,20 @@ class BrainstormWidget extends StatefulWidget {
   State<BrainstormWidget> createState() => _BrainstormWidgetState();
 }
 
+// Stato della registrazione vocale
+enum _RecordState { idle, recording, paused }
+
 class _BrainstormWidgetState extends State<BrainstormWidget> {
   final _controller = TextEditingController();
   final _speechToText = SpeechToText();
-  bool _isRecording = false;
+
+  _RecordState _recordState = _RecordState.idle;
   bool _speechAvailable = false;
   bool _hasChanges = false;
-  bool _expanded = false; // collapsible panel
+  bool _expanded = true; // aperto di default
+
+  // Testo accumulato prima di riavviare la registrazione
+  String _accumulatedText = '';
 
   // Timer display per elapsed brainstorm time
   Timer? _displayTimer;
@@ -85,6 +93,73 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
     return '${m.toString().padLeft(1, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  // ── Recording logic ─────────────────────────────────────────────────
+
+  Future<void> _startRecording() async {
+    if (!_speechAvailable) return;
+    _sessionStart ??= DateTime.now();
+
+    // Preserva il testo già scritto prima di iniziare
+    _accumulatedText = _controller.text.trim();
+
+    await _speechToText.listen(
+      onResult: (result) {
+        if (!mounted) return;
+        // Appende il testo riconosciuto a quello già presente
+        final newPart = result.recognizedWords;
+        final separator =
+            _accumulatedText.isNotEmpty && newPart.isNotEmpty ? ' ' : '';
+        setState(() {
+          _controller.text = '$_accumulatedText$separator$newPart';
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+          _hasChanges = true;
+        });
+      },
+      localeId: 'it_IT',
+      listenFor: const Duration(minutes: 10),
+      pauseFor: const Duration(seconds: 8),
+    );
+
+    setState(() => _recordState = _RecordState.recording);
+    _startDisplayTimer();
+  }
+
+  void _stopRecording() {
+    _speechToText.stop();
+    // Aggiorna l'accumulato con il testo corrente (per eventuale ripresa)
+    _accumulatedText = _controller.text.trim();
+    setState(() => _recordState = _RecordState.paused);
+  }
+
+  Future<void> _resumeRecording() async {
+    if (!_speechAvailable) return;
+    // Riprende senza cancellare il testo precedente
+    _accumulatedText = _controller.text.trim();
+
+    await _speechToText.listen(
+      onResult: (result) {
+        if (!mounted) return;
+        final newPart = result.recognizedWords;
+        final separator =
+            _accumulatedText.isNotEmpty && newPart.isNotEmpty ? ' ' : '';
+        setState(() {
+          _controller.text = '$_accumulatedText$separator$newPart';
+          _controller.selection = TextSelection.fromPosition(
+            TextPosition(offset: _controller.text.length),
+          );
+          _hasChanges = true;
+        });
+      },
+      localeId: 'it_IT',
+      listenFor: const Duration(minutes: 10),
+      pauseFor: const Duration(seconds: 8),
+    );
+
+    setState(() => _recordState = _RecordState.recording);
+  }
+
   @override
   Widget build(BuildContext context) {
     final services = context.read<AppServices>();
@@ -101,40 +176,48 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
               children: [
                 PhosphorIcon(
                   PhosphorIcons.brain(
-                    _isRecording
+                    _recordState == _RecordState.recording
                         ? PhosphorIconsStyle.fill
                         : PhosphorIconsStyle.regular,
                   ),
-                  size: 20,
-                  color: _isRecording ? AppColors.error : AppColors.cyan,
+                  size: 22,
+                  color: _recordState == _RecordState.recording
+                      ? AppColors.error
+                      : AppColors.cyan,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Brainstorming $_formattedElapsed',
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontSize: 17),
                   ),
                 ),
                 // Mic quick-action
-                if (services.isPro && _speechAvailable)
+                if (_speechAvailable)
                   GestureDetector(
                     onTap: () {
-                      if (_isRecording) {
+                      if (!_expanded) setState(() => _expanded = true);
+                      if (_recordState == _RecordState.recording) {
                         _stopRecording();
+                      } else if (_recordState == _RecordState.paused) {
+                        _resumeRecording();
                       } else {
-                        if (!_expanded) setState(() => _expanded = true);
                         _startRecording();
                       }
                     },
                     child: Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: PhosphorIcon(
-                        _isRecording
+                        _recordState == _RecordState.recording
                             ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
                             : PhosphorIcons.microphone(),
-                        size: 20,
-                        color:
-                            _isRecording ? AppColors.error : AppColors.cyan,
+                        size: 22,
+                        color: _recordState == _RecordState.recording
+                            ? AppColors.error
+                            : AppColors.cyan,
                       ),
                     ),
                   ),
@@ -149,7 +232,7 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
             ),
           ),
 
-          // ── Contenuto collassabile ──────────────────────────────────
+          // ── Contenuto espandibile ───────────────────────────────────
           AnimatedSize(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
@@ -159,172 +242,102 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
                     children: [
                       const SizedBox(height: 16),
 
-          // ── Coach IA (PRO) button ───────────────────────────────────
-          _CoachButton(
-            isPro: services.isPro,
-            onTap: services.isPro
-                ? () => context.push('/coach')
-                : () => context.push('/paywall'),
-          ),
-
-          const SizedBox(height: 10),
-
-          // Voice recording (Pro only, visible only when speech is available)
-          if (services.isPro && _speechAvailable)
-            GestureDetector(
-              onTap: _isRecording ? _stopRecording : _startRecording,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isRecording
-                      ? AppColors.error.withOpacity(0.1)
-                      : AppColors.cyan.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _isRecording
-                        ? AppColors.error
-                        : AppColors.cyan.withOpacity(0.2),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    PhosphorIcon(
-                      _isRecording
-                          ? PhosphorIcons.stopCircle(PhosphorIconsStyle.fill)
-                          : PhosphorIcons.microphone(),
-                      color: _isRecording ? AppColors.error : AppColors.cyan,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 7),
-                    Text(
-                      _isRecording
-                          ? AppStrings.brainStopRecord
-                          : AppStrings.brainRecord,
-                      style: TextStyle(
-                        color: _isRecording ? AppColors.error : AppColors.cyan,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                      // ── Coach IA (PRO) button ─────────────────────
+                      _CoachButton(
+                        isPro: services.isPro,
+                        onTap: services.isPro
+                            ? () => context.push('/coach')
+                            : () => context.push('/paywall'),
                       ),
-                    ),
-                    if (_isRecording) ...[
-                      const SizedBox(width: 8),
-                      _PulseIndicator(),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+                      const SizedBox(height: 12),
 
-          const SizedBox(height: 12),
+                      // ── Recording buttons (FREE + PRO) ───────────
+                      if (_speechAvailable)
+                        _RecordingBar(
+                          state: _recordState,
+                          onRecord: _startRecording,
+                          onStop: _stopRecording,
+                          onResume: _resumeRecording,
+                        ),
 
-          // AI prompt del giorno
-          if (widget.aiPromptOfDay != null &&
-              widget.aiPromptOfDay!.isNotEmpty) ...[
-            GestureDetector(
-              onTap: () {
-                if (_controller.text.trim().isEmpty) {
-                  _controller.text = widget.aiPromptOfDay!;
-                  _controller.selection = TextSelection.fromPosition(
-                    TextPosition(offset: _controller.text.length),
-                  );
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.cyan.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    PhosphorIcon(PhosphorIcons.lightbulb(),
-                        size: 14, color: AppColors.cyan),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Prompt AI di oggi',
-                            style: TextStyle(
-                              color: AppColors.cyan,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.aiPromptOfDay!,
-                            style: Theme.of(context)
+                      if (_speechAvailable) const SizedBox(height: 12),
+
+                      // ── Prompt AI del giorno (solo icona, no titolo)
+                      if (widget.aiPromptOfDay != null &&
+                          widget.aiPromptOfDay!.isNotEmpty)
+                        _AiPromptHint(
+                          prompt: widget.aiPromptOfDay!,
+                          onTap: () {
+                            if (_controller.text.trim().isEmpty) {
+                              _controller.text = widget.aiPromptOfDay!;
+                              _controller.selection =
+                                  TextSelection.fromPosition(
+                                TextPosition(
+                                    offset: _controller.text.length),
+                              );
+                            }
+                          },
+                        ),
+
+                      if (widget.aiPromptOfDay != null &&
+                          widget.aiPromptOfDay!.isNotEmpty)
+                        const SizedBox(height: 10),
+
+                      // ── Text area ────────────────────────────────
+                      TextField(
+                        controller: _controller,
+                        maxLines: 7,
+                        style: const TextStyle(fontSize: 15, height: 1.6),
+                        decoration: InputDecoration(
+                          hintText: AppStrings.brainPlaceholder,
+                          hintStyle: TextStyle(
+                            color: Theme.of(context)
                                 .textTheme
                                 .bodySmall
-                                ?.copyWith(height: 1.45),
+                                ?.color
+                                ?.withOpacity(0.5),
+                            fontSize: 15,
+                            height: 1.6,
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 14),
+
+                      // ── Action buttons ──────────────────────────
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _hasChanges
+                                  ? () => _saveBrainstorm(services)
+                                  : null,
+                              icon: PhosphorIcon(
+                                  PhosphorIcons.floppyDisk(), size: 16),
+                              label: const Text(AppStrings.brainSave,
+                                  style: TextStyle(fontSize: 13)),
+                              style: ElevatedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton.icon(
+                            onPressed: _controller.text.isNotEmpty
+                                ? () => _exportToAI(context, services)
+                                : null,
+                            icon: PhosphorIcon(PhosphorIcons.export(),
+                                size: 16),
+                            label: const Text(AppStrings.brainExport,
+                                style: TextStyle(fontSize: 13)),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 10, horizontal: 12),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    PhosphorIcon(PhosphorIcons.cursorClick(),
-                        color: AppColors.cyan, size: 14),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-
-          // Text area
-          TextField(
-            controller: _controller,
-            maxLines: 6,
-            decoration: InputDecoration(
-              hintText: AppStrings.brainPlaceholder,
-              hintStyle: TextStyle(
-                color: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.color
-                    ?.withOpacity(0.6),
-                fontSize: 14,
-                height: 1.6,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Action buttons
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _hasChanges ? () => _saveBrainstorm(services) : null,
-                  icon: PhosphorIcon(PhosphorIcons.floppyDisk(), size: 16),
-                  label: const Text(AppStrings.brainSave,
-                      style: TextStyle(fontSize: 13)),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _controller.text.isNotEmpty
-                    ? () => _exportToAI(context, services)
-                    : null,
-                icon: PhosphorIcon(PhosphorIcons.export(), size: 16),
-                label: const Text(AppStrings.brainExport,
-                    style: TextStyle(fontSize: 13)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 10, horizontal: 12),
-                ),
-              ),
-                    ],
-                  )
                     ],
                   )
                 : const SizedBox.shrink(),
@@ -332,33 +345,6 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
         ],
       ),
     );
-  }
-
-  // ── Recording ─────────────────────────────────────────────────────────
-
-  Future<void> _startRecording() async {
-    if (!_speechAvailable) return;
-    _sessionStart ??= DateTime.now();
-    await _speechToText.listen(
-      onResult: (result) {
-        setState(() {
-          _controller.text = result.recognizedWords;
-          _controller.selection = TextSelection.fromPosition(
-            TextPosition(offset: _controller.text.length),
-          );
-          _hasChanges = true;
-        });
-      },
-      localeId: 'it_IT',
-      listenFor: const Duration(minutes: 5),
-      pauseFor: const Duration(seconds: 5),
-    );
-    setState(() => _isRecording = true);
-  }
-
-  void _stopRecording() {
-    _speechToText.stop();
-    setState(() => _isRecording = false);
   }
 
   // ── Save ─────────────────────────────────────────────────────────────
@@ -369,9 +355,9 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
 
     final today = DateTime.now();
 
-    // Calcola e salva minuti di sessione
     if (_sessionStart != null) {
-      final minutes = today.difference(_sessionStart!).inMinutes.clamp(0, 60);
+      final minutes =
+          today.difference(_sessionStart!).inMinutes.clamp(0, 60);
       if (minutes > 0) {
         await services.db.addBrainstormMinutes(today, minutes);
       }
@@ -417,12 +403,25 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    // Prompt strutturato
+    // Data e ora formattate
+    final now = DateTime.now();
+    final dateStr =
+        DateFormat("d MMMM yyyy 'alle' HH:mm", 'it').format(now);
+
+    // Prompt strutturato con ruolo, data e istruzioni organizzative
     final structuredPrompt =
-        'Analizza i miei pensieri di oggi e aiutami a ragionare con più chiarezza. '
-        'Identifica i pattern principali, le priorità implicite e suggeriscimi '
-        'UNA domanda socratica che mi aiuti a fare il passo successivo.\n\n'
-        'I MIEI PENSIERI:\n$text';
+        'Sei un coach personale esperto in produttività, pensiero critico e '
+        'crescita personale. Il tuo stile è riflessivo, socratico e non giudicante.\n\n'
+        'Analizza la seguente trascrizione dei miei pensieri di oggi ($dateStr). '
+        'Per ogni analisi:\n'
+        '1. Identifica i TEMI principali e i pattern ricorrenti\n'
+        '2. Evidenzia le PRIORITÀ implicite (cosa mi preme davvero?)\n'
+        '3. Rileva eventuali BLOCCHI o tensioni nascoste\n'
+        '4. Proponi UNA domanda socratica che mi aiuti a fare il passo successivo\n'
+        '5. Suggerisci UNA azione concreta per oggi\n\n'
+        '--- TRASCRIZIONE ($dateStr) ---\n'
+        '$text\n'
+        '--- FINE TRASCRIZIONE ---';
 
     // Copia negli appunti
     await Clipboard.setData(ClipboardData(text: structuredPrompt));
@@ -467,6 +466,171 @@ class _BrainstormWidgetState extends State<BrainstormWidget> {
   }
 }
 
+// ── Recording Bar ──────────────────────────────────────────────────────────────
+
+class _RecordingBar extends StatelessWidget {
+  const _RecordingBar({
+    required this.state,
+    required this.onRecord,
+    required this.onStop,
+    required this.onResume,
+  });
+
+  final _RecordState state;
+  final VoidCallback onRecord;
+  final VoidCallback onStop;
+  final VoidCallback onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (state == _RecordState.idle)
+          _RecordBtn(
+            icon: PhosphorIcons.microphone(),
+            label: AppStrings.brainRecord,
+            color: AppColors.cyan,
+            isActive: false,
+            onTap: onRecord,
+          ),
+
+        if (state == _RecordState.recording) ...[
+          _RecordBtn(
+            icon: PhosphorIcons.stopCircle(PhosphorIconsStyle.fill),
+            label: AppStrings.brainStopRecord,
+            color: AppColors.error,
+            isActive: true,
+            onTap: onStop,
+          ),
+          const SizedBox(width: 8),
+          _PulseIndicator(),
+          const SizedBox(width: 6),
+          Text(
+            'In ascolto...',
+            style: TextStyle(
+              color: AppColors.error.withOpacity(0.7),
+              fontSize: 12,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ],
+
+        if (state == _RecordState.paused) ...[
+          _RecordBtn(
+            icon: PhosphorIcons.play(PhosphorIconsStyle.fill),
+            label: 'Riprendi',
+            color: AppColors.cyan,
+            isActive: false,
+            onTap: onResume,
+          ),
+          const SizedBox(width: 8),
+          _RecordBtn(
+            icon: PhosphorIcons.microphone(),
+            label: 'Nuova',
+            color: Colors.grey,
+            isActive: false,
+            onTap: onRecord,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _RecordBtn extends StatelessWidget {
+  const _RecordBtn({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final PhosphorIconData icon;
+  final String label;
+  final Color color;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive
+              ? color.withOpacity(0.12)
+              : color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color.withOpacity(isActive ? 0.8 : 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(icon, color: color, size: 16),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                fontFamily: 'Inter',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── AI Prompt Hint (senza titolo, solo icona) ─────────────────────────────────
+
+class _AiPromptHint extends StatelessWidget {
+  const _AiPromptHint({required this.prompt, required this.onTap});
+  final String prompt;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.cyan.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.cyan.withOpacity(0.15)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            PhosphorIcon(PhosphorIcons.lightbulb(),
+                size: 14, color: AppColors.cyan),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                prompt,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(height: 1.45),
+              ),
+            ),
+            PhosphorIcon(PhosphorIcons.cursorClick(),
+                color: AppColors.cyan, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Coach IA Button ────────────────────────────────────────────────────────────
 
 class _CoachButton extends StatelessWidget {
@@ -480,7 +644,8 @@ class _CoachButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           gradient: isPro
               ? LinearGradient(
@@ -492,7 +657,8 @@ class _CoachButton extends StatelessWidget {
                   end: Alignment.centerRight,
                 )
               : null,
-          color: isPro ? null : AppColors.cyan.withOpacity(0.05),
+          color:
+              isPro ? null : AppColors.cyan.withOpacity(0.05),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isPro ? AppColors.cyan : AppColors.cyan.withOpacity(0.2),
@@ -503,7 +669,9 @@ class _CoachButton extends StatelessWidget {
           children: [
             PhosphorIcon(
               PhosphorIcons.chatCircleDots(
-                  isPro ? PhosphorIconsStyle.fill : PhosphorIconsStyle.regular),
+                  isPro
+                      ? PhosphorIconsStyle.fill
+                      : PhosphorIconsStyle.regular),
               color: AppColors.cyan,
               size: 22,
             ),
@@ -525,7 +693,10 @@ class _CoachButton extends StatelessWidget {
                   if (!isPro)
                     Text(
                       AppStrings.coachStartFreeDesc,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(
                             color: AppColors.cyan.withOpacity(0.6),
                           ),
                     ),
@@ -534,7 +705,8 @@ class _CoachButton extends StatelessWidget {
             ),
             if (!isPro)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   gradient: AppColors.proGradient,
                   borderRadius: BorderRadius.circular(6),
@@ -575,9 +747,9 @@ class _PulseIndicatorState extends State<_PulseIndicator>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 700),
     )..repeat(reverse: true);
-    _anim = Tween(begin: 0.4, end: 1.0).animate(_ctrl);
+    _anim = Tween(begin: 0.3, end: 1.0).animate(_ctrl);
   }
 
   @override

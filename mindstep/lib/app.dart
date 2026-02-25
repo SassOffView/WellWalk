@@ -15,6 +15,7 @@ import 'core/services/ai_insight_service.dart';
 import 'core/services/tts_service.dart';
 import 'core/services/quote_service.dart';
 import 'core/services/coaching_service.dart';
+import 'core/services/weather_service.dart';
 import 'core/models/subscription_status.dart';
 import 'core/models/notification_preferences.dart';
 import 'core/models/badge_model.dart';
@@ -43,8 +44,13 @@ class AppServices extends ChangeNotifier {
   final HealthService health = HealthService();
   final TtsService tts = TtsService();
   final QuoteService quotes = QuoteService();
+  final WeatherService weather = WeatherService();
 
-  SubscriptionStatus _subscription = SubscriptionStatus.freePlan;
+  // TESTING MODE: PRO unlocked — change back to freePlan before production release
+  SubscriptionStatus _subscription = const SubscriptionStatus(
+    plan: SubscriptionPlan.proMonthly,
+    purchasedAt: null,
+  );
   ThemeMode _themeMode = ThemeMode.system;
   NotificationPreferences _notifPrefs = NotificationPreferences.defaults;
 
@@ -62,7 +68,11 @@ class AppServices extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    _subscription = await db.loadSubscription();
+    final loaded = await db.loadSubscription();
+    // TESTING MODE: forza PRO — rimuovere prima del rilascio in produzione
+    _subscription = loaded.isPro
+        ? loaded
+        : const SubscriptionStatus(plan: SubscriptionPlan.proMonthly);
     notifyListeners();
     await Future.wait([
       notifications.initialize(),

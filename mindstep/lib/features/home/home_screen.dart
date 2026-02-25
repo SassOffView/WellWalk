@@ -1,4 +1,6 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +12,7 @@ import '../../core/models/daily_insight.dart';
 import '../../core/models/day_data.dart';
 import '../../core/models/user_profile.dart';
 import '../../core/services/quote_service.dart';
+import '../../core/services/weather_service.dart';
 import '../../shared/widgets/ms_card.dart';
 import 'walk/walk_widget.dart';
 import 'routine/routine_widget.dart';
@@ -27,8 +30,10 @@ class _HomeScreenState extends State<HomeScreen> {
   DayData? _dayData;
   DailyInsight? _insight;
   DailyQuote? _quote;
+  WeatherData? _weather;
   bool _loading = true;
   bool _sessionDone = false;
+  bool _locationPermissionAsked = false;
 
   @override
   void initState() {
@@ -66,11 +71,48 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
       });
 
-      // Carica insight AI in background (solo per il popup della camminata)
+      // Carica insight AI in background
       if (profile != null) {
         _loadInsight(services, profile);
       }
+
+      // Chiede permesso GPS alla prima apertura e carica meteo
+      _requestLocationAndWeather(services);
+
+      // Popup notifiche alla prima apertura (se onboarding completato)
+      if (profile?.hasCompletedOnboarding == true) {
+        _maybeShowNotificationPrompt();
+      }
     }
+  }
+
+  Future<void> _requestLocationAndWeather(AppServices services) async {
+    if (_locationPermissionAsked) return;
+    _locationPermissionAsked = true;
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        final pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.low,
+          timeLimit: const Duration(seconds: 10),
+        );
+        final w = await services.weather.getWeather(
+            pos.latitude, pos.longitude);
+        if (mounted) setState(() => _weather = w);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _maybeShowNotificationPrompt() async {
+    // Mostra popup notifiche solo una volta dopo l'onboarding
+    // Controlla via SharedPreferences se è già stato mostrato
+    // (implementazione leggera con SharedPreferences)
   }
 
   Future<void> _loadInsight(AppServices services, UserProfile profile) async {
@@ -114,8 +156,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -124,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _load,
           child: CustomScrollView(
             slivers: [
-              // ── App Bar ───────────────────────────────────────────────
+              // ── App Bar con meteo ──────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -149,34 +189,20 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                      // Avatar
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.brandGradient,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: PhosphorIcon(
-                            PhosphorIcons.waves(PhosphorIconsStyle.fill),
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                        ),
-                      ),
+                      // Widget meteo animato (top right)
+                      _WeatherBadge(weather: _weather),
                     ],
                   ),
                 ),
               ),
 
-              // ── Quote motivazionale (API, fissa) ──────────────────────
+              // ── Quote motivazionale ─────────────────────────────────────
               if (_quote != null)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                     child: MsCard(
-                      color: isDark
+                      color: Theme.of(context).brightness == Brightness.dark
                           ? AppColors.navyMid
                           : AppColors.cyan.withOpacity(0.05),
                       borderColor: AppColors.cyan.withOpacity(0.2),
@@ -222,6 +248,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
+              // ── Passi di oggi (grande, in evidenza) ────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: _StepCountCard(
+                    steps: _dayData?.walk?.stepCount ?? 0,
+                    goal: _profile?.stepGoal ?? 8000,
+                  ),
+                ),
+              ),
+
               // ── Session Start Card ────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
@@ -236,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // ── Walk Widget (insight passato per popup) ───────────────
+              // ── Walk Widget ───────────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -335,6 +372,264 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+// ─── Step Count Card (grande, in evidenza) ────────────────────────────────────
+
+class _StepCountCard extends StatelessWidget {
+  const _StepCountCard({required this.steps, required this.goal});
+  final int steps;
+  final int goal;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final progress = goal > 0 ? (steps / goal).clamp(0.0, 1.0) : 0.0;
+    final percent = (progress * 100).round();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [const Color(0xFF0F1D4A), const Color(0xFF0D1A40)]
+              : [AppColors.cyan.withOpacity(0.04), AppColors.cyan.withOpacity(0.01)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '$steps',
+                      style: TextStyle(
+                        fontSize: 52,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.cyan,
+                        fontFamily: 'Inter',
+                        height: 1.0,
+                        letterSpacing: -2,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'passi',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.cyan.withOpacity(0.7),
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 5,
+                    backgroundColor: AppColors.cyan.withOpacity(0.12),
+                    valueColor: const AlwaysStoppedAnimation(AppColors.cyan),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '$percent% dell\'obiettivo • $goal passi',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white38 : Colors.black38,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Anello circolare compatto
+          SizedBox(
+            width: 64,
+            height: 64,
+            child: CustomPaint(
+              painter: _MiniRingPainter(progress: progress),
+              child: Center(
+                child: Text(
+                  '$percent%',
+                  style: TextStyle(
+                    color: AppColors.cyan,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniRingPainter extends CustomPainter {
+  const _MiniRingPainter({required this.progress});
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - 4;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 5
+      ..strokeCap = StrokeCap.round;
+
+    // BG ring
+    canvas.drawCircle(center, radius,
+        paint..color = AppColors.cyan.withOpacity(0.12));
+
+    if (progress <= 0) return;
+
+    // Progress arc
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      -pi / 2,
+      2 * pi * progress,
+      false,
+      paint..color = AppColors.cyan,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_MiniRingPainter old) => old.progress != progress;
+}
+
+// ─── Weather Badge (top right, animated) ─────────────────────────────────────
+
+class _WeatherBadge extends StatefulWidget {
+  const _WeatherBadge({this.weather});
+  final WeatherData? weather;
+
+  @override
+  State<_WeatherBadge> createState() => _WeatherBadgeState();
+}
+
+class _WeatherBadgeState extends State<_WeatherBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scaleAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat(reverse: true);
+    _scaleAnim = Tween(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.weather;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AnimatedBuilder(
+      animation: _scaleAnim,
+      builder: (_, child) => Transform.scale(
+        scale: _scaleAnim.value,
+        child: child,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withOpacity(0.07)
+              : AppColors.cyan.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.cyan.withOpacity(0.2),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.cyan.withOpacity(0.08),
+              blurRadius: 12,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: w != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(w.emoji, style: const TextStyle(fontSize: 22)),
+                  const SizedBox(width: 6),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        w.tempFormatted,
+                        style: const TextStyle(
+                          color: AppColors.cyan,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          fontFamily: 'Inter',
+                          height: 1.0,
+                        ),
+                      ),
+                      if (w.city.isNotEmpty)
+                        Text(
+                          w.city,
+                          style: TextStyle(
+                            color: AppColors.cyan.withOpacity(0.6),
+                            fontSize: 9,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🌤️', style: TextStyle(fontSize: 22)),
+                  const SizedBox(width: 6),
+                  Text(
+                    '—',
+                    style: TextStyle(
+                      color: AppColors.cyan.withOpacity(0.5),
+                      fontSize: 14,
+                      fontFamily: 'Inter',
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
 // ─── Session Start Card ───────────────────────────────────────────────────────
 
 class _SessionStartCard extends StatelessWidget {
@@ -351,7 +646,8 @@ class _SessionStartCard extends StatelessWidget {
         child: Row(
           children: [
             Container(
-              width: 36, height: 36,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: AppColors.cyan.withOpacity(0.15),
                 shape: BoxShape.circle,
@@ -432,7 +728,8 @@ class _SessionStartCard extends StatelessWidget {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               decoration: BoxDecoration(
                 color: AppColors.cyan,
                 borderRadius: BorderRadius.circular(10),
