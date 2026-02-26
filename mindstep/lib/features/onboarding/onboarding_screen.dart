@@ -441,7 +441,7 @@ class _Slide1StepsState extends State<_Slide1Steps> {
                     Row(
                       children: [3000, 5000].map((v) => Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.only(right: v == 3000 ? 5 : 0, left: v == 5000 ? 5 : 0),
+                          padding: EdgeInsets.only(right: v == 3000 ? 5 : 0, left: v == 5000 ? 5 : 0),
                           child: _PresetChip(
                             label: '${(v / 1000).toStringAsFixed(0)}k',
                             isSelected: widget.data.stepGoal == v,
