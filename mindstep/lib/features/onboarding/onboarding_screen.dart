@@ -257,10 +257,11 @@ class _Slide0Welcome extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Logo
+          // Logo grande e centrale
           _LogoArea(),
-          const SizedBox(height: 28),
+          const SizedBox(height: 32),
 
           // Title
           const Text(
@@ -274,18 +275,18 @@ class _Slide0Welcome extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           const Text(
-            'Movimento, pensiero libero, organizzazione e coaching.\nTutto questo in un solo posto.',
+            'Movimento, pensiero libero e crescita personale.\nTutto questo in un solo posto.',
             style: TextStyle(
               color: Colors.white60,
-              fontSize: 15,
+              fontSize: 16,
               height: 1.6,
               fontFamily: 'Inter',
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 36),
 
           // Language selector
           Container(
@@ -296,7 +297,7 @@ class _Slide0Welcome extends StatelessWidget {
               border: Border.all(color: Colors.white.withOpacity(0.10)),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Text(
                   'LINGUA / LANGUAGE',
@@ -310,6 +311,7 @@ class _Slide0Welcome extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _LangChip(
                       label: '🇮🇹  Italiano',
@@ -370,10 +372,10 @@ class _Slide1StepsState extends State<_Slide1Steps> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _SlideIcon(icon: PhosphorIcons.footprints(PhosphorIconsStyle.fill)),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
           const Text(
             'Traccia ogni passo',
@@ -383,74 +385,78 @@ class _Slide1StepsState extends State<_Slide1Steps> {
               fontWeight: FontWeight.w800,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           const Text(
             'La distanza che percorri\nconstruisce la persona che diventi.',
             style: TextStyle(
               color: Colors.white60,
-              fontSize: 15,
+              fontSize: 16,
               height: 1.6,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 32),
 
-          // Step goal input
-          _InputCard(
-            label: 'OBIETTIVO PASSI GIORNALIERI',
-            hint: 'Quanti passi vuoi fare ogni giorno?',
-            child: Row(
+          // Passi obiettivo — tasto centrale grande
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
+            ),
+            child: Column(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ctrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: const TextStyle(
-                      color: AppColors.cyan,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'Inter',
-                    ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      hintText: '8000',
-                      hintStyle: TextStyle(
-                        color: Color(0xFF2A5A7A),
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
+                const Text(
+                  'OBIETTIVO PASSI GIORNALIERI',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '${widget.data.stepGoal}',
+                  style: const TextStyle(
+                    color: AppColors.cyan,
+                    fontSize: 52,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Inter',
+                    height: 1.0,
+                    letterSpacing: -2,
                   ),
                 ),
                 const Text(
                   'passi',
                   style: TextStyle(
                     color: Colors.white38,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontFamily: 'Inter',
                   ),
                 ),
+                const SizedBox(height: 20),
+                // Preset buttons
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [3000, 5000, 7000, 10000].map((v) => _PresetChip(
+                    label: '${(v / 1000).toStringAsFixed(0)}k',
+                    isSelected: widget.data.stepGoal == v,
+                    onTap: () {
+                      _ctrl.text = v.toString();
+                      widget.onStepGoalChanged(v);
+                    },
+                  )).toList(),
+                ),
               ],
             ),
-          ),
-
-          const SizedBox(height: 14),
-
-          // Presets
-          Wrap(
-            spacing: 8,
-            children: [5000, 8000, 10000, 12000].map((v) => _PresetChip(
-              label: '$v',
-              isSelected: widget.data.stepGoal == v,
-              onTap: () {
-                _ctrl.text = v.toString();
-                widget.onStepGoalChanged(v);
-              },
-            )).toList(),
           ),
         ],
       ),
@@ -516,10 +522,10 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _SlideIcon(icon: PhosphorIcons.checkCircle(PhosphorIconsStyle.fill)),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
           const Text(
             'Le piccole abitudini',
@@ -529,25 +535,27 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
               fontWeight: FontWeight.w800,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           const Text(
-            'fanno i grandi cambiamenti.\nAggiungi le routine che vuoi completare ogni giorno.',
+            'fanno i grandi cambiamenti.\nAggiungi le abitudini che vuoi coltivare ogni giorno.',
             style: TextStyle(
               color: Colors.white60,
-              fontSize: 15,
+              fontSize: 16,
               height: 1.6,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
 
           // Routine list
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
+              color: Colors.white.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
             ),
             child: Column(
               children: List.generate(_ctrls.length, (i) => Column(
@@ -555,15 +563,15 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
                   if (i > 0)
                     Container(
                       height: 1,
-                      color: Colors.white.withOpacity(0.07),
+                      color: Colors.white.withOpacity(0.08),
                     ),
                   Row(
                     children: [
                       const SizedBox(width: 16),
                       PhosphorIcon(
                         PhosphorIcons.checkCircle(),
-                        color: AppColors.cyan.withOpacity(0.5),
-                        size: 16,
+                        color: AppColors.cyan.withOpacity(0.6),
+                        size: 18,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -571,7 +579,7 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
                           controller: _ctrls[i],
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 14,
+                            fontSize: 15,
                             fontFamily: 'Inter',
                           ),
                           decoration: InputDecoration(
@@ -579,13 +587,13 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
                             hintText: i == 0
                                 ? 'Es. Meditazione 10 min'
                                 : 'Es. Lettura 15 min',
-                            hintStyle: const TextStyle(
-                              color: Colors.white24,
-                              fontSize: 14,
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.3),
+                              fontSize: 15,
                             ),
                             isDense: true,
                             contentPadding:
-                                const EdgeInsets.symmetric(vertical: 14),
+                                const EdgeInsets.symmetric(vertical: 16),
                           ),
                         ),
                       ),
@@ -593,7 +601,7 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
                         IconButton(
                           icon: PhosphorIcon(
                             PhosphorIcons.x(),
-                            color: Colors.white24,
+                            color: Colors.white30,
                             size: 16,
                           ),
                           onPressed: () => _removeRoutine(i),
@@ -607,29 +615,34 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
 
           if (_ctrls.length < 5)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.only(top: 12),
               child: TextButton.icon(
                 onPressed: _addRoutine,
                 icon: PhosphorIcon(
                   PhosphorIcons.plus(),
                   color: AppColors.cyan,
-                  size: 16,
+                  size: 18,
                 ),
                 label: const Text(
                   'Aggiungi abitudine',
-                  style: TextStyle(color: AppColors.cyan, fontFamily: 'Inter'),
+                  style: TextStyle(
+                    color: AppColors.cyan,
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                  ),
                 ),
               ),
             ),
 
-          const SizedBox(height: 8),
-          Text(
-            'Puoi aggiungerne fino a 5 ora. Modificabili in seguito.',
+          const SizedBox(height: 10),
+          const Text(
+            'Puoi aggiungere fino a 5 abitudini ora. Sono modificabili in seguito.',
             style: TextStyle(
-              color: AppColors.cyan.withOpacity(0.4),
-              fontSize: 11,
+              color: Colors.white38,
+              fontSize: 12,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
         ],
       ),
@@ -682,10 +695,10 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _SlideIcon(icon: PhosphorIcons.brain(PhosphorIconsStyle.fill)),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
           const Text(
             'Cattura i tuoi pensieri',
@@ -695,100 +708,105 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
               fontWeight: FontWeight.w800,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           const Text(
             'Le idee migliori nascono mentre cammini.\nRegistrale prima che svaniscano.',
             style: TextStyle(
               color: Colors.white60,
-              fontSize: 15,
+              fontSize: 16,
               height: 1.6,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 28),
 
           // Nome
-          _InputCard(
-            label: 'COME TI CHIAMI?',
-            hint: 'Il tuo nome — verrà usato per personalizzare l\'esperienza',
-            child: TextField(
-              controller: _nameCtrl,
-              textCapitalization: TextCapitalization.words,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'Inter',
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-                hintText: 'Il tuo nome',
-                hintStyle: TextStyle(
-                  color: Colors.white24,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.15)),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          // Minuti brainstorming
-          _InputCard(
-            label: 'MINUTI DI BRAINSTORMING AL GIORNO',
-            hint: 'Quanto tempo vuoi dedicare ai tuoi pensieri?',
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: _minCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: const TextStyle(
-                      color: AppColors.cyan,
-                      fontSize: 32,
-                      fontWeight: FontWeight.w800,
-                      fontFamily: 'Inter',
-                    ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      hintText: '10',
-                      hintStyle: TextStyle(
-                        color: Color(0xFF2A5A7A),
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
                 const Text(
-                  'min / giorno',
+                  'COME TI CHIAMI?',
                   style: TextStyle(
                     color: Colors.white38,
-                    fontSize: 14,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
                     fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter',
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: 'Il tuo nome',
+                    hintStyle: TextStyle(
+                      color: Colors.white24,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 20),
 
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            children: [5, 10, 15, 20].map((v) => _PresetChip(
-              label: '$v min',
-              isSelected: widget.data.brainstormMinutes == v,
-              onTap: () {
-                _minCtrl.text = v.toString();
-                widget.onMinutesChanged(v);
-              },
-            )).toList(),
+          // Minuti brainstorming — solo preset
+          Container(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'MINUTI DI BRAINSTORMING AL GIORNO',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: [5, 10, 15, 20].map((v) => _PresetChip(
+                    label: '$v min',
+                    isSelected: widget.data.brainstormMinutes == v,
+                    onTap: () {
+                      _minCtrl.text = v.toString();
+                      widget.onMinutesChanged(v);
+                    },
+                  )).toList(),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -809,10 +827,10 @@ class _Slide4Journey extends StatelessWidget {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           _SlideIcon(icon: PhosphorIcons.target(PhosphorIconsStyle.fill)),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
           const Text(
             'Il tuo viaggio inizia adesso',
@@ -822,16 +840,18 @@ class _Slide4Journey extends StatelessWidget {
               fontWeight: FontWeight.w800,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           const Text(
-            'Movimento, pensiero libero, organizzazione e coaching.\nScegli il tuo AI coach per un\'esperienza personalizzata.',
+            'Scegli il tuo AI coach.\nPuoi cambiarlo in qualsiasi momento.',
             style: TextStyle(
               color: Colors.white60,
-              fontSize: 14,
+              fontSize: 16,
               height: 1.6,
               fontFamily: 'Inter',
             ),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
 
@@ -965,21 +985,15 @@ class _LogoArea extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 110,
-      height: 110,
+      width: 150,
+      height: 150,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [
-            AppColors.cyan.withOpacity(0.15),
-            AppColors.cyanLight.withOpacity(0.08),
-          ],
-        ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.cyan.withOpacity(0.18),
-            blurRadius: 30,
-            spreadRadius: 5,
+            color: AppColors.cyan.withOpacity(0.22),
+            blurRadius: 40,
+            spreadRadius: 6,
           ),
         ],
       ),
@@ -987,11 +1001,22 @@ class _LogoArea extends StatelessWidget {
         child: Image.asset(
           'assets/images/logo.png',
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Center(
-            child: PhosphorIcon(
-              PhosphorIcons.waves(PhosphorIconsStyle.fill),
-              size: 52,
-              color: AppColors.cyan,
+          errorBuilder: (_, __, ___) => Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.cyan.withOpacity(0.20),
+                  AppColors.cyanLight.withOpacity(0.10),
+                ],
+              ),
+            ),
+            child: Center(
+              child: PhosphorIcon(
+                PhosphorIcons.waves(PhosphorIconsStyle.fill),
+                size: 64,
+                color: AppColors.cyan,
+              ),
             ),
           ),
         ),
@@ -1007,15 +1032,22 @@ class _SlideIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 72,
-      height: 72,
+      width: 100,
+      height: 100,
       decoration: BoxDecoration(
         color: AppColors.cyan.withOpacity(0.10),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cyan.withOpacity(0.12),
+            blurRadius: 24,
+            spreadRadius: 2,
+          ),
+        ],
       ),
       child: Center(
-        child: PhosphorIcon(icon, size: 34, color: AppColors.cyan),
+        child: PhosphorIcon(icon, size: 48, color: AppColors.cyan),
       ),
     );
   }

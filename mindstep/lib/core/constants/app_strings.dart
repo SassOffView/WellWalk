@@ -11,7 +11,7 @@ class AppStrings {
   static const navHistory = 'Storico';
   static const navAnalytics = 'Dati';
   static const navAchievements = 'Traguardi';
-  static const navSettings = 'Altro';
+  static const navSettings = 'Profilo';
 
   // ── ONBOARDING ─────────────────────────────────────────────────────────
   static const onboardingSkip = 'Salta';
@@ -156,7 +156,7 @@ class AppStrings {
   static const badgeProOnly = 'Disponibile con PRO';
 
   // ── SETTINGS ──────────────────────────────────────────────────────────
-  static const settingsTitle = 'Impostazioni';
+  static const settingsTitle = 'Profilo';
   static const settingsProfile = 'Il mio profilo';
   static const settingsTheme = 'Tema';
   static const settingsThemeLight = 'Chiaro';
@@ -166,6 +166,8 @@ class AppStrings {
   static const settingsHealthConnect = 'Health Connect';
   static const settingsRoutines = 'Gestisci routine';
   static const settingsExportJSON = 'Esporta dati (JSON)';
+  static const settingsExportCSV = 'Esporta Report (CSV)';
+  static const settingsExportAI = 'Invia al tuo assistente';
   static const settingsExportPDF = 'Esporta report (PDF)';
   static const settingsExportPDFPro = 'Export PDF — PRO';
   static const settingsReset = 'Reimposta app';

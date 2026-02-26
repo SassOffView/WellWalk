@@ -132,10 +132,10 @@ class AppTheme {
       onPrimary: AppColors.navyDark,
       onSurface: AppColors.darkText,
     ),
-    scaffoldBackgroundColor: AppColors.darkBackground,
+    scaffoldBackgroundColor: Colors.transparent,
     fontFamily: 'Inter',
     appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Colors.transparent,
       foregroundColor: AppColors.darkText,
       elevation: 0,
       scrolledUnderElevation: 0,

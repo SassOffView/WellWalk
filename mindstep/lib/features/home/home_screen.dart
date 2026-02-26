@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:pedometer/pedometer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:go_router/go_router.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -12,12 +14,11 @@ import '../../core/constants/app_strings.dart';
 import '../../core/models/daily_insight.dart';
 import '../../core/models/day_data.dart';
 import '../../core/models/user_profile.dart';
+import '../../core/models/walk_session.dart';
 import '../../core/services/quote_service.dart';
 import '../../core/services/weather_service.dart';
 import '../../shared/widgets/ms_card.dart';
-import 'walk/walk_widget.dart';
 import 'routine/routine_widget.dart';
-import 'brainstorm/brainstorm_widget.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -298,40 +299,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-              // ── Passi di oggi (grande, in evidenza) ────────────────────
+              // ── Clarity Session Widget (unifica passi + sessione + GPS + voce) ──
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _StepCountCard(
-                    steps: _dayData?.walk?.stepCount ?? 0,
-                    goal: _profile?.stepGoal ?? 8000,
-                  ),
-                ),
-              ),
-
-              // ── Session Start Card ────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: _SessionStartCard(
-                    isDone: _sessionDone,
-                    onTap: () async {
-                      await context.push('/session');
-                      _reload();
-                    },
-                  ),
-                ),
-              ),
-
-              // ── Walk Widget ───────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: WalkWidget(
+                  child: _ClaritySessionWidget(
                     initialDayData: _dayData,
-                    onWalkCompleted: _reload,
-                    insightForPopup: _insight,
                     userProfile: _profile,
+                    insightForPopup: _insight,
+                    sessionDone: _sessionDone,
+                    onSessionComplete: _reload,
                   ),
                 ),
               ),
@@ -343,18 +320,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: RoutineWidget(
                     dayData: _dayData,
                     onChanged: _reload,
-                  ),
-                ),
-              ),
-
-              // ── Brainstorm Widget ─────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                  child: BrainstormWidget(
-                    dayData: _dayData,
-                    onSaved: _reload,
-                    aiPromptOfDay: _insight?.brainstormPrompt,
                   ),
                 ),
               ),
@@ -422,7 +387,976 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ─── Step Count Card (grande, in evidenza) ────────────────────────────────────
+// ─── Clarity Session Widget ───────────────────────────────────────────────────
+// Sostituisce: _StepCountCard + _SessionStartCard + WalkWidget + BrainstormWidget
+// Stato idle:   contatore passi giornalieri + bottone "Inizia"
+// Stato active: timer + stats + trascrizione live + bottone "Termina"
+// Stato done:   card "Momento completato"
+
+enum _SessionPhase { idle, active, done }
+
+class _ClaritySessionWidget extends StatefulWidget {
+  const _ClaritySessionWidget({
+    required this.initialDayData,
+    required this.userProfile,
+    required this.insightForPopup,
+    required this.sessionDone,
+    required this.onSessionComplete,
+  });
+
+  final DayData? initialDayData;
+  final UserProfile? userProfile;
+  final DailyInsight? insightForPopup;
+  final bool sessionDone;
+  final VoidCallback onSessionComplete;
+
+  @override
+  State<_ClaritySessionWidget> createState() => _ClaritySessionWidgetState();
+}
+
+class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
+  late _SessionPhase _phase;
+
+  // GPS / Walk
+  WalkSession? _walkSession;
+  bool _requestingPermission = false;
+  bool _insightShown = false;
+
+  // Pedometro
+  int _stepCountBase = 0;
+  int _currentSteps = 0;
+  StreamSubscription<StepCount>? _stepSub;
+
+  // Voce
+  final _speechToText = SpeechToText();
+  bool _speechAvailable = false;
+  bool _isRecording = false;
+  String _accumulatedText = '';
+  final _transcriptController = TextEditingController();
+
+  AppServices get _services => context.read<AppServices>();
+
+  @override
+  void initState() {
+    super.initState();
+    _phase = widget.sessionDone ? _SessionPhase.done : _SessionPhase.idle;
+
+    _services.gps.onSessionUpdate = (session) {
+      if (mounted) setState(() => _walkSession = session);
+    };
+    _services.gps.onError = (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error)));
+      }
+    };
+
+    _initSpeech();
+  }
+
+  @override
+  void didUpdateWidget(_ClaritySessionWidget old) {
+    super.didUpdateWidget(old);
+    if (widget.sessionDone && !old.sessionDone && _phase == _SessionPhase.idle) {
+      setState(() => _phase = _SessionPhase.done);
+    }
+  }
+
+  Future<void> _initSpeech() async {
+    _speechAvailable = await _speechToText.initialize(
+      onStatus: (status) {
+        // Riavvia automaticamente dopo silenzio per non interrompere mai la rec
+        if (status == 'notListening' && _isRecording && mounted) {
+          _restartListening();
+        }
+      },
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _initPedometer() {
+    _stepSub?.cancel();
+    try {
+      _stepSub = Pedometer.stepCountStream.listen(
+        (event) {
+          if (!mounted) return;
+          if (_stepCountBase == 0) _stepCountBase = event.steps;
+          final steps = event.steps - _stepCountBase;
+          setState(() => _currentSteps = steps > 0 ? steps : 0);
+        },
+        onError: (_) {},
+        cancelOnError: false,
+      );
+    } catch (_) {}
+  }
+
+  // ── Avvia sessione ────────────────────────────────────────────────────
+
+  Future<void> _startSession() async {
+    setState(() => _requestingPermission = true);
+
+    final hasPerm = await _services.gps.requestPermissions(
+      backgroundRequired: _services.isPro,
+    );
+
+    setState(() => _requestingPermission = false);
+
+    if (!hasPerm) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(AppStrings.walkLocationPermissionDeny)),
+        );
+      }
+      return;
+    }
+
+    // Pedometro
+    _stepCountBase = 0;
+    _currentSteps = 0;
+    _initPedometer();
+
+    // GPS
+    await _services.gps.startWalk();
+
+    // Voce
+    _accumulatedText = '';
+    _transcriptController.text = '';
+    _isRecording = true;
+    if (_speechAvailable) await _startListening();
+
+    setState(() => _phase = _SessionPhase.active);
+
+    // Notifica persistente
+    await _services.notifications.showWalkOngoing(
+      distance: '0.00',
+      time: '00:00',
+      isPaused: false,
+    );
+
+    // Insight popup (una volta sola)
+    if (!_insightShown && widget.insightForPopup != null && mounted) {
+      _insightShown = true;
+      _showInsightPopup(widget.insightForPopup!);
+    }
+  }
+
+  // ── Speech helpers ────────────────────────────────────────────────────
+
+  Future<void> _startListening() async {
+    _accumulatedText = _transcriptController.text.trim();
+    await _speechToText.listen(
+      onResult: (result) {
+        if (!mounted || !_isRecording) return;
+        final newPart = result.recognizedWords;
+        final sep =
+            _accumulatedText.isNotEmpty && newPart.isNotEmpty ? ' ' : '';
+        setState(() {
+          _transcriptController.text = '$_accumulatedText$sep$newPart';
+          _transcriptController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _transcriptController.text.length),
+          );
+        });
+      },
+      localeId: 'it_IT',
+      listenFor: const Duration(minutes: 30),
+      pauseFor: const Duration(seconds: 60), // 60s di silenzio tollerati
+    );
+  }
+
+  Future<void> _restartListening() async {
+    if (!_isRecording || !_speechAvailable) return;
+    _accumulatedText = _transcriptController.text.trim();
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted || !_isRecording) return;
+    await _startListening();
+  }
+
+  // ── Ferma sessione ────────────────────────────────────────────────────
+
+  Future<void> _stopSession() async {
+    _isRecording = false;
+    if (_speechToText.isListening) _speechToText.stop();
+    _stepSub?.cancel();
+
+    final completed = _services.gps.stopWalk();
+    await _services.notifications.cancelWalkOngoing();
+
+    if (completed == null) {
+      setState(() => _phase = _SessionPhase.idle);
+      return;
+    }
+
+    final withSteps = completed.copyWith(stepCount: _currentSteps);
+    if (!mounted) return;
+    _showSummary(withSteps);
+  }
+
+  void _showSummary(WalkSession session) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _SessionSummarySheet(
+        session: session,
+        transcript: _transcriptController.text.trim(),
+        onSave: () async {
+          Navigator.pop(ctx);
+          await _saveSession(session);
+        },
+        onDiscard: () {
+          Navigator.pop(ctx);
+          setState(() {
+            _phase = _SessionPhase.idle;
+            _walkSession = null;
+            _currentSteps = 0;
+            _stepCountBase = 0;
+            _transcriptController.text = '';
+            _accumulatedText = '';
+          });
+        },
+      ),
+    );
+  }
+
+  Future<void> _saveSession(WalkSession session) async {
+    final today = DateTime.now();
+    await _services.db.saveWalkSession(session, today);
+
+    final transcript = _transcriptController.text.trim();
+    if (transcript.isNotEmpty) {
+      await _services.db.saveBrainstormNote(today, transcript);
+      final minutes = session.activeMinutes.clamp(1, 60);
+      await _services.db.addBrainstormMinutes(today, minutes);
+    }
+
+    final dayData = await _services.db.loadDayData(today);
+    final newBadges = await _services.badges.onWalkCompleted(
+      walkMinutes: session.activeMinutes,
+      isPro: _services.isPro,
+      dayData: dayData,
+    );
+
+    if (_services.isPro) {
+      final profile = await _services.db.loadUserProfile();
+      await _services.health.syncWalkSession(
+        session,
+        weightKg: profile?.effectiveWeightKg ?? 65,
+      );
+    }
+
+    setState(() {
+      _walkSession = null;
+      _currentSteps = 0;
+      _stepCountBase = 0;
+      _transcriptController.text = '';
+      _accumulatedText = '';
+      _phase = _SessionPhase.done;
+    });
+
+    widget.onSessionComplete();
+
+    if (newBadges.isNotEmpty && mounted) {
+      for (final badge in newBadges) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Traguardo: ${badge.name}!'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    }
+  }
+
+  // ── Insight popup ─────────────────────────────────────────────────────
+
+  void _showInsightPopup(DailyInsight insight) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  PhosphorIcon(
+                    PhosphorIcons.sparkle(PhosphorIconsStyle.fill),
+                    color: AppColors.cyan,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Il tuo insight di oggi',
+                    style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                insight.insight,
+                style:
+                    Theme.of(ctx).textTheme.bodyMedium?.copyWith(height: 1.55),
+              ),
+              if (insight.walkTip != null && insight.walkTip!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.cyan.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    insight.walkTip!,
+                    style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                          color: AppColors.cyan,
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Inizia'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _stepSub?.cancel();
+    _speechToText.cancel();
+    _transcriptController.dispose();
+    _services.gps.onSessionUpdate = null;
+    _services.gps.onError = null;
+    super.dispose();
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    switch (_phase) {
+      case _SessionPhase.idle:
+        return _buildIdle(context);
+      case _SessionPhase.active:
+        return _buildActive(context);
+      case _SessionPhase.done:
+        return _buildDone();
+    }
+  }
+
+  // ── Idle: contatore passi + bottone Inizia ────────────────────────────
+
+  Widget _buildIdle(BuildContext context) {
+    final steps = widget.initialDayData?.walk?.stepCount ?? 0;
+    final goal = widget.userProfile?.stepGoal ?? 8000;
+
+    return Column(
+      children: [
+        _StepCountCard(steps: steps, goal: goal),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: _requestingPermission ? null : _startSession,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF0F1D4A), Color(0xFF162055)],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                PhosphorIcon(
+                  PhosphorIcons.waves(PhosphorIconsStyle.fill),
+                  size: 34,
+                  color: AppColors.cyan,
+                ),
+                const SizedBox(width: 16),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Il tuo momento di chiarezza',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Timer · Passi · GPS · Voce — tutto insieme',
+                        style: TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _requestingPermission
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: AppColors.cyan,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 9),
+                        decoration: BoxDecoration(
+                          color: AppColors.cyan,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'Inizia',
+                          style: TextStyle(
+                            color: Color(0xFF0A1128),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Active: timer grande + stats + trascrizione + Termina ─────────────
+
+  Widget _buildActive(BuildContext context) {
+    final session = _walkSession;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: isDark
+              ? [const Color(0xFF0A1830), const Color(0xFF0D1E3A)]
+              : [AppColors.cyan.withOpacity(0.06), Colors.white],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cyan.withOpacity(0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cyan.withOpacity(0.10),
+            blurRadius: 24,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: Column(
+        children: [
+          // Header: stato + indicatore REC
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppColors.success,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'SESSIONE IN CORSO',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.success,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+              if (_speechAvailable)
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: _isRecording
+                            ? AppColors.error
+                            : Colors.grey,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _isRecording ? '● REC' : 'MIC OFF',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: _isRecording ? AppColors.error : Colors.grey,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // Timer grande
+          Text(
+            session?.formattedTimeFull ?? '00:00:00',
+            style: TextStyle(
+              fontFamily: 'Courier New',
+              fontSize: 54,
+              fontWeight: FontWeight.w700,
+              color: AppColors.cyan,
+              height: 1.0,
+              letterSpacing: -1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'WALK TIME',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2.0,
+              color: AppColors.cyan.withOpacity(0.5),
+            ),
+          ),
+
+          const SizedBox(height: 22),
+
+          // Stats: Passi | KM | KM/H | KCAL
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _StatChip(
+                value: '$_currentSteps',
+                label: 'PASSI',
+                color: const Color(0xFF9C27B0),
+              ),
+              _statDivider(isDark),
+              _StatChip(
+                value: session?.formattedDistance ?? '0.00',
+                label: 'KM',
+                color: AppColors.cyan,
+              ),
+              _statDivider(isDark),
+              _StatChip(
+                value: session?.formattedSpeed ?? '0.0',
+                label: 'KM/H',
+                color: AppColors.cyan,
+              ),
+              _statDivider(isDark),
+              _StatChip(
+                value: session?.formattedCalories ?? '0',
+                label: 'KCAL',
+                color: const Color(0xFF4CAF50),
+              ),
+            ],
+          ),
+
+          // Trascrizione live
+          if (_speechAvailable) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              constraints:
+                  const BoxConstraints(minHeight: 72, maxHeight: 150),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.black.withOpacity(0.2)
+                    : Colors.black.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _isRecording
+                      ? AppColors.error.withOpacity(0.4)
+                      : AppColors.cyan.withOpacity(0.15),
+                ),
+              ),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: _transcriptController.text.isEmpty
+                    ? Text(
+                        _isRecording
+                            ? 'Sto ascoltando...'
+                            : 'Parla quando sei pronto',
+                        style: TextStyle(
+                          color: isDark
+                              ? Colors.white.withOpacity(0.3)
+                              : Colors.black26,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      )
+                    : Text(
+                        _transcriptController.text,
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black87,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
+          // Bottone Termina
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _stopSession,
+              icon: PhosphorIcon(
+                PhosphorIcons.stop(PhosphorIconsStyle.fill),
+                size: 18,
+                color: Colors.white,
+              ),
+              label: const Text(
+                'Termina sessione',
+                style: TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Done: card "Momento completato" ───────────────────────────────────
+
+  Widget _buildDone() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        color: AppColors.cyan.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cyan.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.cyan.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: PhosphorIcon(
+                PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                color: AppColors.cyan,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Momento completato oggi',
+                  style: TextStyle(
+                    color: AppColors.cyan,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Ottimo lavoro. Domani sarà ancora qui per te.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statDivider(bool isDark) => Text(
+        '|',
+        style: TextStyle(
+          color:
+              isDark ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.12),
+          fontSize: 18,
+        ),
+      );
+}
+
+// ── Stat chip per sessione attiva ─────────────────────────────────────────────
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontFamily: 'Courier New',
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: color,
+            height: 1.0,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: color.withOpacity(0.7),
+            letterSpacing: 0.8,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Session Summary Bottom Sheet ──────────────────────────────────────────────
+
+class _SessionSummarySheet extends StatelessWidget {
+  const _SessionSummarySheet({
+    required this.session,
+    required this.transcript,
+    required this.onSave,
+    required this.onDiscard,
+  });
+
+  final WalkSession session;
+  final String transcript;
+  final VoidCallback onSave;
+  final VoidCallback onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        24,
+        24,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.lightBorder,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          PhosphorIcon(
+            PhosphorIcons.star(PhosphorIconsStyle.fill),
+            size: 48,
+            color: AppColors.warning,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            AppStrings.walkCompleted,
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            AppStrings.walkSummary,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 24),
+
+          // Stats row
+          Row(
+            children: [
+              _SummaryStat(
+                label: 'Distanza',
+                value: '${session.formattedDistance} km',
+                icon: PhosphorIcons.mapPin(),
+              ),
+              _SummaryStat(
+                label: 'Tempo',
+                value: session.formattedTime,
+                icon: PhosphorIcons.timer(),
+              ),
+              _SummaryStat(
+                label: 'Passi',
+                value: '${session.stepCount}',
+                icon: PhosphorIcons.footprints(),
+              ),
+              _SummaryStat(
+                label: 'Calorie',
+                value: '${session.formattedCalories} kcal',
+                icon: PhosphorIcons.flame(),
+              ),
+            ],
+          ),
+
+          // Trascrizione preview (se presente)
+          if (transcript.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.cyan.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      PhosphorIcon(
+                        PhosphorIcons.microphone(PhosphorIconsStyle.fill),
+                        size: 14,
+                        color: AppColors.cyan,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Trascrizione vocale',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: AppColors.cyan,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    transcript.length > 150
+                        ? '${transcript.substring(0, 150)}…'
+                        : transcript,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          height: 1.4,
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 24),
+
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onDiscard,
+                  child: const Text(AppStrings.walkDiscard),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: onSave,
+                  icon: PhosphorIcon(
+                    PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                    size: 18,
+                  ),
+                  label: const Text(AppStrings.walkSave),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final PhosphorIconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          PhosphorIcon(icon, size: 20, color: AppColors.cyan),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              color: AppColors.cyan,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          Text(label, style: Theme.of(context).textTheme.labelSmall),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Step Count Card (usato in idle) ─────────────────────────────────────────
 
 class _StepCountCard extends StatelessWidget {
   const _StepCountCard({required this.steps, required this.goal});
@@ -460,7 +1394,7 @@ class _StepCountCard extends StatelessWidget {
                   children: [
                     Text(
                       '$steps',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 52,
                         fontWeight: FontWeight.w900,
                         color: AppColors.cyan,
@@ -507,7 +1441,6 @@ class _StepCountCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          // Anello circolare compatto
           SizedBox(
             width: 64,
             height: 64,
@@ -516,7 +1449,7 @@ class _StepCountCard extends StatelessWidget {
               child: Center(
                 child: Text(
                   '$percent%',
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppColors.cyan,
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
@@ -545,13 +1478,11 @@ class _MiniRingPainter extends CustomPainter {
       ..strokeWidth = 5
       ..strokeCap = StrokeCap.round;
 
-    // BG ring
     canvas.drawCircle(center, radius,
         paint..color = AppColors.cyan.withOpacity(0.12));
 
     if (progress <= 0) return;
 
-    // Progress arc
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       -pi / 2,
@@ -616,9 +1547,7 @@ class _WeatherBadgeState extends State<_WeatherBadge>
               ? Colors.white.withOpacity(0.07)
               : AppColors.cyan.withOpacity(0.08),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: AppColors.cyan.withOpacity(0.2),
-          ),
+          border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
           boxShadow: [
             BoxShadow(
               color: AppColors.cyan.withOpacity(0.08),
@@ -675,126 +1604,6 @@ class _WeatherBadgeState extends State<_WeatherBadge>
                   ),
                 ],
               ),
-      ),
-    );
-  }
-}
-
-// ─── Session Start Card ───────────────────────────────────────────────────────
-
-class _SessionStartCard extends StatelessWidget {
-  const _SessionStartCard({required this.isDone, required this.onTap});
-  final bool isDone;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    if (isDone) {
-      return MsCard(
-        color: AppColors.cyan.withOpacity(0.07),
-        borderColor: AppColors.cyan.withOpacity(0.3),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppColors.cyan.withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: PhosphorIcon(
-                  PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                  color: AppColors.cyan,
-                  size: 20,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Momento completato oggi',
-                    style: TextStyle(
-                      color: AppColors.cyan,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Ottimo lavoro. Domani sarà ancora qui per te.',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0F1D4A), Color(0xFF162055)],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
-        ),
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            PhosphorIcon(
-              PhosphorIcons.waves(PhosphorIconsStyle.fill),
-              size: 34,
-              color: AppColors.cyan,
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Il tuo momento di chiarezza',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    '60 secondi per te. Anche oggi.',
-                    style: TextStyle(color: Colors.white54, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
-                color: AppColors.cyan,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Text(
-                'Inizia',
-                style: TextStyle(
-                  color: Color(0xFF0A1128),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

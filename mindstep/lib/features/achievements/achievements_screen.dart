@@ -15,10 +15,13 @@ class AchievementsScreen extends StatefulWidget {
   State<AchievementsScreen> createState() => _AchievementsScreenState();
 }
 
+// Gruppi di visualizzazione per gli achievements (4 categorie)
+enum _AchievementGroup { tutti, walk, routine, mente }
+
 class _AchievementsScreenState extends State<AchievementsScreen> {
   List<BadgeStatus> _statuses = [];
   bool _loading = true;
-  BadgeCategory? _filterCategory;
+  _AchievementGroup _group = _AchievementGroup.tutti;
 
   @override
   void initState() {
@@ -36,8 +39,26 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
   }
 
   List<BadgeStatus> get _filtered {
-    if (_filterCategory == null) return _statuses;
-    return _statuses.where((s) => s.badge.category == _filterCategory).toList();
+    switch (_group) {
+      case _AchievementGroup.tutti:
+        return _statuses;
+      case _AchievementGroup.walk:
+        return _statuses.where((s) => const {
+          BadgeCategory.walk,
+          BadgeCategory.distance,
+          BadgeCategory.duration,
+          BadgeCategory.streak,
+        }.contains(s.badge.category)).toList();
+      case _AchievementGroup.routine:
+        return _statuses
+            .where((s) => s.badge.category == BadgeCategory.routine)
+            .toList();
+      case _AchievementGroup.mente:
+        return _statuses.where((s) => const {
+          BadgeCategory.brainstorm,
+          BadgeCategory.special,
+        }.contains(s.badge.category)).toList();
+    }
   }
 
   int get _unlockedCount => _statuses.where((s) => s.isUnlocked).length;
@@ -85,8 +106,8 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
             // Category filter
             SliverToBoxAdapter(
               child: _CategoryFilter(
-                selected: _filterCategory,
-                onSelected: (cat) => setState(() => _filterCategory = cat),
+                selected: _group,
+                onSelected: (g) => setState(() => _group = g),
               ),
             ),
 
@@ -200,7 +221,7 @@ class _ProgressOverview extends StatelessWidget {
   }
 }
 
-// ── Category Filter ──────────────────────────────────────────────────────────
+// ── Category Filter (4 gruppi) ────────────────────────────────────────────────
 
 class _CategoryFilter extends StatelessWidget {
   const _CategoryFilter({
@@ -208,31 +229,17 @@ class _CategoryFilter extends StatelessWidget {
     required this.onSelected,
   });
 
-  final BadgeCategory? selected;
-  final ValueChanged<BadgeCategory?> onSelected;
+  final _AchievementGroup selected;
+  final ValueChanged<_AchievementGroup> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final cats = [
-      null,
-      BadgeCategory.walk,
-      BadgeCategory.distance,
-      BadgeCategory.duration,
-      BadgeCategory.routine,
-      BadgeCategory.streak,
-      BadgeCategory.brainstorm,
-      BadgeCategory.special,
-    ];
-
-    final labels = {
-      null: 'Tutti',
-      BadgeCategory.walk: 'Walk',
-      BadgeCategory.distance: 'Km',
-      BadgeCategory.duration: 'Tempo',
-      BadgeCategory.routine: 'Routine',
-      BadgeCategory.streak: 'Streak',
-      BadgeCategory.brainstorm: 'Mente',
-      BadgeCategory.special: 'Speciali',
+    const groups = _AchievementGroup.values;
+    const labels = {
+      _AchievementGroup.tutti: 'Tutti',
+      _AchievementGroup.walk: 'Walk',
+      _AchievementGroup.routine: 'Routine',
+      _AchievementGroup.mente: 'Mente',
     };
 
     return SizedBox(
@@ -240,16 +247,16 @@ class _CategoryFilter extends StatelessWidget {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-        itemCount: cats.length,
+        itemCount: groups.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
-          final cat = cats[i];
-          final isSelected = cat == selected;
+          final group = groups[i];
+          final isSelected = group == selected;
           return GestureDetector(
-            onTap: () => onSelected(cat),
+            onTap: () => onSelected(group),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: isSelected ? AppColors.cyan : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
@@ -258,7 +265,7 @@ class _CategoryFilter extends StatelessWidget {
                 ),
               ),
               child: Text(
-                labels[cat]!,
+                labels[group]!,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,

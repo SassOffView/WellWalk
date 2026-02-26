@@ -1,6 +1,7 @@
-import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -99,156 +100,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
 
-            // ── Profilo ──────────────────────────────────────────
+            // ── Accordion sections ────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: MsCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(AppStrings.settingsProfile,
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 16),
-                      if (_profile != null)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(
-                            backgroundColor: AppColors.cyan.withOpacity(0.15),
-                            child: Text(
-                              _profile!.firstName.isNotEmpty
-                                  ? _profile!.firstName[0].toUpperCase()
-                                  : '?',
-                              style: const TextStyle(
-                                color: AppColors.cyan,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          title: Text(
-                            _profile!.name,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          subtitle: Text(
-                            '${_profile!.age} anni · ${_profile!.genderLabel}',
-                          ),
-                          trailing: const Icon(Icons.edit_outlined, size: 18),
-                          onTap: () => _editProfile(context),
-                        ),
-                    ],
+                child: _AccordionSection(
+                  title: AppStrings.settingsProfile,
+                  icon: PhosphorIcons.user(PhosphorIconsStyle.fill),
+                  initiallyExpanded: true,
+                  child: _ProfileContent(
+                    profile: _profile,
+                    onEdit: () => _editProfile(context),
                   ),
                 ),
               ),
             ),
 
-            // ── Tema ─────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: MsCard(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _AccordionSection(
+                  title: AppStrings.settingsTheme,
+                  icon: PhosphorIcons.palette(PhosphorIconsStyle.fill),
+                  child: _ThemeSelector(
+                    current: services.themeMode,
+                    onChange: services.setThemeMode,
+                  ),
+                ),
+              ),
+            ),
+
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _AccordionSection(
+                  title: AppStrings.settingsNotifications,
+                  icon: PhosphorIcons.bell(PhosphorIconsStyle.fill),
+                  child: _NotificationSettings(services: services),
+                ),
+              ),
+            ),
+
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _AccordionSection(
+                  title: 'AI Coach',
+                  icon: PhosphorIcons.robot(PhosphorIconsStyle.fill),
+                  child: _AiCoachContent(services: services),
+                ),
+              ),
+            ),
+
+            // ── Dati: Export CSV + Invia all'AI ──────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _AccordionSection(
+                  title: 'Dati',
+                  icon: PhosphorIcons.database(PhosphorIconsStyle.fill),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(AppStrings.settingsTheme,
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 12),
-                      _ThemeSelector(
-                        current: services.themeMode,
-                        onChange: services.setThemeMode,
+                      _ExportTile(
+                        icon: PhosphorIcons.fileCsv(PhosphorIconsStyle.fill),
+                        label: AppStrings.settingsExportCSV,
+                        onTap: () => _exportCSV(services),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // ── Notifiche ────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: MsCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(AppStrings.settingsNotifications,
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 12),
-                      _NotificationSettings(services: services),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // ── Health Connect (Pro) ──────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: MsCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(AppStrings.settingsHealthConnect,
-                              style: Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(width: 8),
-                          if (!isPro) const _ProChip(),
-                        ],
+                      const SizedBox(height: 8),
+                      _ExportTile(
+                        icon: PhosphorIcons.robot(PhosphorIconsStyle.fill),
+                        label: AppStrings.settingsExportAI,
+                        iconColor: const Color(0xFF9C27B0),
+                        onTap: () => _sendToAI(services),
                       ),
-                      const SizedBox(height: 12),
-                      if (isPro)
-                        ElevatedButton.icon(
-                          onPressed: () => _connectHealth(services),
-                          icon: const Icon(Icons.favorite_outline, size: 18),
-                          label: const Text('Connetti Health Connect'),
-                        )
-                      else
-                        Text(
-                          'Sincronizza passi, distanza e calorie con Health Connect e Google Fit.',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // ── AI Coach ─────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: _AiCoachSection(services: services),
-              ),
-            ),
-
-            // ── Export ───────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: MsCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Dati', style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 12),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.download_outlined,
-                            color: AppColors.cyan),
-                        title: const Text(AppStrings.settingsExportJSON),
-                        trailing: const Icon(Icons.chevron_right, size: 18),
-                        onTap: () => _exportData(services),
-                      ),
-                      if (isPro)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.picture_as_pdf_outlined,
-                              color: AppColors.cyan),
-                          title: const Text(AppStrings.settingsExportPDF),
-                          trailing: const Icon(Icons.chevron_right, size: 18),
-                          onTap: () {},
-                        ),
                     ],
                   ),
                 ),
@@ -258,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // ── Danger zone ──────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                 child: OutlinedButton(
                   onPressed: () => _confirmReset(services),
                   style: OutlinedButton.styleFrom(
@@ -333,23 +257,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _connectHealth(AppServices services) async {
-    final ok = await services.health.requestPermissions();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ok
-              ? 'Health Connect connesso ✅'
-              : 'Connessione fallita. Controlla i permessi.'),
-        ),
+  /// Genera un CSV con i dati degli ultimi 90 giorni e lo condivide
+  Future<void> _exportCSV(AppServices services) async {
+    try {
+      final data = await services.db.exportAllData();
+      final days = data['days'] as List<dynamic>? ?? [];
+
+      final buffer = StringBuffer();
+      buffer.writeln('Data,Passi,Distanza(km),Minuti Walk,Brainstorm Min,Note Brainstorm');
+
+      for (final day in days) {
+        final d = day as Map<String, dynamic>;
+        final walk = d['walk'] as Map<String, dynamic>?;
+        final steps = walk?['stepCount'] ?? 0;
+        final distKm = ((walk?['distanceMeters'] ?? 0) as num) / 1000.0;
+        final walkMs = (walk?['activeMilliseconds'] ?? 0) as num;
+        final walkMin = (walkMs / 60000).round();
+        final brainstormMin = d['brainstormMinutes'] ?? 0;
+        final note = (d['brainstormNote'] ?? '').toString()
+            .replaceAll('"', '""');
+
+        buffer.writeln(
+          '${d['date']},$steps,${distKm.toStringAsFixed(2)},$walkMin,$brainstormMin,"$note"',
+        );
+      }
+
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/mindstep_report.csv');
+      await file.writeAsString(buffer.toString());
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'MindStep — Report attività',
       );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore export: $e')),
+        );
+      }
     }
   }
 
-  Future<void> _exportData(AppServices services) async {
-    final data = await services.db.exportAllData();
-    final json = jsonEncode(data);
-    await Share.share(json, subject: 'MindStep - Esporta dati');
+  /// Prepara un riassunto testuale e lo condivide con l'assistente AI
+  Future<void> _sendToAI(AppServices services) async {
+    try {
+      final data = await services.db.exportAllData();
+      final profile = data['profile'] as Map<String, dynamic>?;
+      final days = data['days'] as List<dynamic>? ?? [];
+
+      int totalSteps = 0;
+      int totalWalkMin = 0;
+      int totalBrainstormMin = 0;
+      final notes = <String>[];
+
+      for (final day in days) {
+        final d = day as Map<String, dynamic>;
+        final walk = d['walk'] as Map<String, dynamic>?;
+        totalSteps += (walk?['stepCount'] ?? 0) as int;
+        totalWalkMin += ((walk?['activeMilliseconds'] ?? 0) as num ~/ 60000);
+        totalBrainstormMin += (d['brainstormMinutes'] ?? 0) as int;
+        final note = (d['brainstormNote'] ?? '').toString().trim();
+        if (note.isNotEmpty) notes.add('• $note');
+      }
+
+      final name = profile?['firstName'] ?? 'Utente';
+      final summary = '''
+Ciao! Ecco il mio report MindStep degli ultimi 90 giorni:
+
+👤 Nome: $name
+👟 Passi totali: $totalSteps
+🚶 Minuti di camminata: $totalWalkMin
+🧠 Minuti brainstorm: $totalBrainstormMin
+📝 Note vocali (ultime 5):
+${notes.reversed.take(5).join('\n')}
+
+Puoi analizzare questi dati e darmi consigli personalizzati?
+''';
+
+      await Share.share(summary, subject: 'MindStep — Dati per il mio assistente');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _confirmReset(AppServices services) async {
@@ -376,6 +369,299 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await services.db.resetAll();
       if (mounted) context.go('/onboarding');
     }
+  }
+}
+
+// ── Accordion Section ─────────────────────────────────────────────────────────
+
+class _AccordionSection extends StatefulWidget {
+  const _AccordionSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final PhosphorIconData icon;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  @override
+  State<_AccordionSection> createState() => _AccordionSectionState();
+}
+
+class _AccordionSectionState extends State<_AccordionSection> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.navyMid : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _expanded
+              ? AppColors.cyan.withOpacity(0.3)
+              : AppColors.lightBorder.withOpacity(0.5),
+        ),
+      ),
+      child: Column(
+        children: [
+          // Header row
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: Row(
+                children: [
+                  PhosphorIcon(
+                    widget.icon,
+                    size: 18,
+                    color: AppColors.cyan,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 20,
+                      color: AppColors.cyan.withOpacity(0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Content (animated)
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: widget.child,
+            ),
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 200),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Profile Content ───────────────────────────────────────────────────────────
+
+class _ProfileContent extends StatelessWidget {
+  const _ProfileContent({required this.profile, required this.onEdit});
+  final UserProfile? profile;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    if (profile == null) {
+      return Text(
+        'Nessun profilo trovato',
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: CircleAvatar(
+        backgroundColor: AppColors.cyan.withOpacity(0.15),
+        child: Text(
+          profile!.firstName.isNotEmpty
+              ? profile!.firstName[0].toUpperCase()
+              : '?',
+          style: const TextStyle(
+            color: AppColors.cyan,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+      title: Text(
+        profile!.name,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text('${profile!.age} anni · ${profile!.genderLabel}'),
+      trailing: const Icon(Icons.edit_outlined, size: 18),
+      onTap: onEdit,
+    );
+  }
+}
+
+// ── Export Tile ───────────────────────────────────────────────────────────────
+
+class _ExportTile extends StatelessWidget {
+  const _ExportTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.iconColor = AppColors.cyan,
+  });
+
+  final PhosphorIconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withOpacity(0.04)
+              : iconColor.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: iconColor.withOpacity(0.2)),
+        ),
+        child: Row(
+          children: [
+            PhosphorIcon(icon, size: 20, color: iconColor),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: iconColor.withOpacity(0.6),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── AI Coach Content (accordion body) ────────────────────────────────────────
+
+class _AiCoachContent extends StatefulWidget {
+  const _AiCoachContent({required this.services});
+  final AppServices services;
+
+  @override
+  State<_AiCoachContent> createState() => _AiCoachContentState();
+}
+
+class _AiCoachContentState extends State<_AiCoachContent> {
+  AiProviderConfig _config = AiProviderConfig.none;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConfig();
+  }
+
+  Future<void> _loadConfig() async {
+    final config = await widget.services.aiInsight.loadProviderConfig();
+    if (mounted) setState(() { _config = config; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const SizedBox(
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.cyan),
+      );
+    }
+
+    return Row(
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: Color(_config.providerColorValue),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _config.providerName,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                _config.isConfigured
+                    ? (_config.isApiKeyValid
+                        ? 'Connesso ✅'
+                        : 'Chiave non testata ⚠️')
+                    : 'Nessun AI configurato',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: () => _showAiSetup(context),
+          child: const Text('Cambia',
+              style: TextStyle(color: AppColors.cyan)),
+        ),
+      ],
+    );
+  }
+
+  void _showAiSetup(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.92,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (ctx, _) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SetupAiProviderScreen(
+            aiService: widget.services.aiInsight,
+            onBack: () => Navigator.pop(ctx),
+            onNext: (config) {
+              Navigator.pop(ctx);
+              _loadConfig();
+            },
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -589,123 +875,6 @@ class _SwitchRow extends StatelessWidget {
   }
 }
 
-// ── AI Coach Section ──────────────────────────────────────────────────────────
-
-class _AiCoachSection extends StatefulWidget {
-  const _AiCoachSection({required this.services});
-  final AppServices services;
-
-  @override
-  State<_AiCoachSection> createState() => _AiCoachSectionState();
-}
-
-class _AiCoachSectionState extends State<_AiCoachSection> {
-  AiProviderConfig _config = AiProviderConfig.none;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadConfig();
-  }
-
-  Future<void> _loadConfig() async {
-    final config = await widget.services.aiInsight.loadProviderConfig();
-    if (mounted) setState(() { _config = config; _loading = false; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MsCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text('AI Coach',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
-              TextButton(
-                onPressed: () => _showAiSetup(context),
-                child: const Text('Cambia',
-                    style: TextStyle(color: AppColors.cyan)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (_loading)
-            const SizedBox(
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.cyan,
-              ),
-            )
-          else
-            Row(
-              children: [
-                Container(
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: Color(_config.providerColorValue),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _config.providerName,
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      Text(
-                        _config.isConfigured
-                            ? (_config.isApiKeyValid
-                                ? 'Connesso ✅'
-                                : 'Chiave non testata ⚠️')
-                            : 'Nessun AI configurato — tocca Cambia per aggiungerne uno',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  void _showAiSetup(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => DraggableScrollableSheet(
-        initialChildSize: 0.92,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (ctx, _) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SetupAiProviderScreen(
-            aiService: widget.services.aiInsight,
-            onBack: () => Navigator.pop(ctx),
-            onNext: (config) {
-              Navigator.pop(ctx);
-              _loadConfig();
-            },
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _ProChip extends StatelessWidget {
   const _ProChip();

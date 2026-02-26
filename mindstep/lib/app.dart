@@ -176,6 +176,27 @@ class MindStepApp extends StatelessWidget {
             darkTheme: AppTheme.dark,
             themeMode: services.themeMode,
             routerConfig: _buildRouter(services),
+            builder: (context, child) {
+              // Gradiente elegante per il tema scuro
+              final isDark =
+                  Theme.of(context).brightness == Brightness.dark;
+              if (!isDark) return child!;
+              return Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF05091A), // midnight navy
+                      Color(0xFF081220), // deep blue
+                      Color(0xFF0A1A30), // rich navy blue
+                    ],
+                    stops: [0.0, 0.5, 1.0],
+                  ),
+                ),
+                child: child,
+              );
+            },
           );
         },
       ),
