@@ -8,7 +8,6 @@ import '../../app.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/models/routine_item.dart';
 import '../../core/models/user_profile.dart';
-import '../../core/models/ai_provider_config.dart';
 
 // ─── Dati raccolti durante l'onboarding ──────────────────────────────────────
 
@@ -17,8 +16,9 @@ class _OnboardingData {
   int stepGoal = 8000;
   List<String> routines = [''];
   String name = '';
+  int age = 25;
+  Gender gender = Gender.other;
   int brainstormMinutes = 10;
-  String aiProvider = 'none'; // 'gemini' | 'openai' | 'claude' | 'none'
 }
 
 // ─── OnboardingScreen ─────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _pageController = PageController();
   final _data = _OnboardingData();
   int _currentPage = 0;
-  static const _totalPages = 5;
+  static const _totalPages = 4;
 
   void _goNext() {
     if (_currentPage < _totalPages - 1) {
@@ -60,18 +60,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     final services = context.read<AppServices>();
     final uuid = const Uuid();
 
-    // 1. Salva profilo parziale con i dati raccolti nelle slide
-    final partialProfile = UserProfile(
+    // 1. Salva profilo completo con tutti i dati raccolti nelle slide
+    final profile = UserProfile(
       name: _data.name.trim().isEmpty ? '' : _data.name.trim(),
-      age: 0, // verrà completato in setup_profile_screen
-      gender: Gender.other,
+      age: _data.age,
+      gender: _data.gender,
       createdAt: DateTime.now(),
       preferredLanguage: _data.language,
       stepGoal: _data.stepGoal,
       brainstormMinutesGoal: _data.brainstormMinutes,
-      hasCompletedOnboarding: false,
+      hasCompletedOnboarding: true,
     );
-    await services.db.saveUserProfile(partialProfile);
+    await services.db.saveUserProfile(profile);
 
     // 2. Salva le routine raccolte nello step 2
     int order = 0;
@@ -86,25 +86,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ));
     }
 
-    // 3. Salva la preferenza AI (senza API key — gestita da backend)
-    if (_data.aiProvider != 'none') {
-      final providerMap = {
-        'gemini': AiProvider.gemini,
-        'openai': AiProvider.openai,
-        'claude': AiProvider.claude,
-      };
-      final provider = providerMap[_data.aiProvider] ?? AiProvider.none;
-      if (provider != AiProvider.none) {
-        final config = AiProviderConfig(
-          provider: provider,
-          isEnabled: true,
-          isApiKeyValid: false, // la chiave viene dal backend
-        );
-        await services.aiInsight.saveProviderConfig(config, apiKey: '');
-      }
-    }
-
-    if (mounted) context.go('/setup');
+    if (mounted) context.go('/home');
   }
 
   @override
@@ -132,7 +114,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     const SizedBox(width: 48),
                   const Spacer(),
                   TextButton(
-                    onPressed: () => context.go('/setup'),
+                    onPressed: () => context.go('/home'),
                     child: const Text(
                       'Salta',
                       style: TextStyle(
@@ -193,11 +175,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     onNameChanged: (v) => setState(() => _data.name = v),
                     onMinutesChanged: (v) =>
                         setState(() => _data.brainstormMinutes = v),
-                  ),
-                  _Slide4Journey(
-                    data: _data,
-                    onAiChanged: (v) =>
-                        setState(() => _data.aiProvider = v),
+                    onGenderChanged: (v) => setState(() => _data.gender = v),
+                    onAgeChanged: (v) => setState(() => _data.age = v),
                   ),
                 ],
               ),
@@ -222,7 +201,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: Text(
                     _currentPage < _totalPages - 1
                         ? 'Avanti'
-                        : 'Inizia il viaggio',
+                        : 'Inizia MindStep',
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 16,
@@ -337,7 +316,7 @@ class _Slide0Welcome extends StatelessWidget {
   }
 }
 
-// ─── Slide 1 — Traccia ogni passo ────────────────────────────────────────────
+// ─── Slide 1 — Ogni passo conta ──────────────────────────────────────────────
 
 class _Slide1Steps extends StatefulWidget {
   const _Slide1Steps({required this.data, required this.onStepGoalChanged});
@@ -378,7 +357,7 @@ class _Slide1StepsState extends State<_Slide1Steps> {
           const SizedBox(height: 28),
 
           const Text(
-            'Traccia ogni passo',
+            'Ogni passo conta',
             style: TextStyle(
               color: Colors.white,
               fontSize: 28,
@@ -400,9 +379,9 @@ class _Slide1StepsState extends State<_Slide1Steps> {
           ),
           const SizedBox(height: 32),
 
-          // Passi obiettivo — tasto centrale grande
+          // Passi obiettivo — numero editabile + preset chips
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.05),
               borderRadius: BorderRadius.circular(16),
@@ -420,16 +399,31 @@ class _Slide1StepsState extends State<_Slide1Steps> {
                     fontFamily: 'Inter',
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  '${widget.data.stepGoal}',
-                  style: const TextStyle(
-                    color: AppColors.cyan,
-                    fontSize: 52,
-                    fontWeight: FontWeight.w900,
-                    fontFamily: 'Inter',
-                    height: 1.0,
-                    letterSpacing: -2,
+                const SizedBox(height: 12),
+                // Editable large number
+                IntrinsicWidth(
+                  child: TextField(
+                    controller: _ctrl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(6),
+                    ],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: AppColors.cyan,
+                      fontSize: 52,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Inter',
+                      height: 1.0,
+                      letterSpacing: -2,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      filled: false,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
                 ),
                 const Text(
@@ -441,19 +435,41 @@ class _Slide1StepsState extends State<_Slide1Steps> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Preset buttons
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: [3000, 5000, 7000, 10000].map((v) => _PresetChip(
-                    label: '${(v / 1000).toStringAsFixed(0)}k',
-                    isSelected: widget.data.stepGoal == v,
-                    onTap: () {
-                      _ctrl.text = v.toString();
-                      widget.onStepGoalChanged(v);
-                    },
-                  )).toList(),
+                // Preset chips 2x2
+                Column(
+                  children: [
+                    Row(
+                      children: [3000, 5000].map((v) => Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: v == 3000 ? 5 : 0, left: v == 5000 ? 5 : 0),
+                          child: _PresetChip(
+                            label: '${(v / 1000).toStringAsFixed(0)}k',
+                            isSelected: widget.data.stepGoal == v,
+                            onTap: () {
+                              _ctrl.text = v.toString();
+                              widget.onStepGoalChanged(v);
+                            },
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [7000, 10000].map((v) => Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: v == 7000 ? 5 : 0, left: v == 10000 ? 5 : 0),
+                          child: _PresetChip(
+                            label: '${(v / 1000).toStringAsFixed(0)}k',
+                            isSelected: widget.data.stepGoal == v,
+                            onTap: () {
+                              _ctrl.text = v.toString();
+                              widget.onStepGoalChanged(v);
+                            },
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -464,7 +480,7 @@ class _Slide1StepsState extends State<_Slide1Steps> {
   }
 }
 
-// ─── Slide 2 — Le piccole abitudini ──────────────────────────────────────────
+// ─── Slide 2 — Le piccole routine ────────────────────────────────────────────
 
 class _Slide2Habits extends StatefulWidget {
   const _Slide2Habits({required this.data, required this.onRoutinesChanged});
@@ -528,7 +544,7 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
           const SizedBox(height: 28),
 
           const Text(
-            'Le piccole abitudini',
+            'Le piccole routine',
             style: TextStyle(
               color: Colors.white,
               fontSize: 28,
@@ -539,7 +555,7 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'fanno i grandi cambiamenti.\nAggiungi le abitudini che vuoi coltivare ogni giorno.',
+            'fanno i grandi cambiamenti.\nAggiungi le routine che vuoi coltivare ogni giorno.',
             style: TextStyle(
               color: Colors.white60,
               fontSize: 16,
@@ -584,6 +600,8 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
                           ),
                           decoration: InputDecoration(
                             border: InputBorder.none,
+                            filled: true,
+                            fillColor: Colors.transparent,
                             hintText: i == 0
                                 ? 'Es. Meditazione 10 min'
                                 : 'Es. Lettura 15 min',
@@ -624,7 +642,7 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
                   size: 18,
                 ),
                 label: const Text(
-                  'Aggiungi abitudine',
+                  'Aggiungi routine',
                   style: TextStyle(
                     color: AppColors.cyan,
                     fontFamily: 'Inter',
@@ -636,7 +654,7 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
 
           const SizedBox(height: 10),
           const Text(
-            'Puoi aggiungere fino a 5 abitudini ora. Sono modificabili in seguito.',
+            'Puoi aggiungere fino a 5 routine ora. Sono modificabili in seguito.',
             style: TextStyle(
               color: Colors.white38,
               fontSize: 12,
@@ -650,17 +668,21 @@ class _Slide2HabitsState extends State<_Slide2Habits> {
   }
 }
 
-// ─── Slide 3 — Cattura i tuoi pensieri ───────────────────────────────────────
+// ─── Slide 3 — Organizza i tuoi pensieri ─────────────────────────────────────
 
 class _Slide3Brainstorm extends StatefulWidget {
   const _Slide3Brainstorm({
     required this.data,
     required this.onNameChanged,
     required this.onMinutesChanged,
+    required this.onGenderChanged,
+    required this.onAgeChanged,
   });
   final _OnboardingData data;
   final ValueChanged<String> onNameChanged;
   final ValueChanged<int> onMinutesChanged;
+  final ValueChanged<Gender> onGenderChanged;
+  final ValueChanged<int> onAgeChanged;
 
   @override
   State<_Slide3Brainstorm> createState() => _Slide3BrainstormState();
@@ -668,25 +690,26 @@ class _Slide3Brainstorm extends StatefulWidget {
 
 class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
   late TextEditingController _nameCtrl;
-  late TextEditingController _minCtrl;
+  late TextEditingController _ageCtrl;
 
   @override
   void initState() {
     super.initState();
     _nameCtrl = TextEditingController(text: widget.data.name);
-    _minCtrl =
-        TextEditingController(text: widget.data.brainstormMinutes.toString());
+    _ageCtrl = TextEditingController(
+      text: widget.data.age > 0 ? widget.data.age.toString() : '',
+    );
     _nameCtrl.addListener(() => widget.onNameChanged(_nameCtrl.text));
-    _minCtrl.addListener(() {
-      final v = int.tryParse(_minCtrl.text);
-      if (v != null && v > 0) widget.onMinutesChanged(v);
+    _ageCtrl.addListener(() {
+      final v = int.tryParse(_ageCtrl.text);
+      if (v != null && v > 0) widget.onAgeChanged(v);
     });
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _minCtrl.dispose();
+    _ageCtrl.dispose();
     super.dispose();
   }
 
@@ -701,7 +724,7 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
           const SizedBox(height: 28),
 
           const Text(
-            'Cattura i tuoi pensieri',
+            'Organizza i tuoi pensieri',
             style: TextStyle(
               color: Colors.white,
               fontSize: 28,
@@ -712,7 +735,7 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Le idee migliori nascono mentre cammini.\nRegistrale prima che svaniscano.',
+            'Le idee migliori nascono mentre cammini.\nRegistrale e organizzale con MindStep.',
             style: TextStyle(
               color: Colors.white60,
               fontSize: 16,
@@ -721,9 +744,9 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
 
-          // Nome
+          // Nome + Genere + Età
           Container(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
             decoration: BoxDecoration(
@@ -734,6 +757,7 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Nome
                 const Text(
                   'COME TI CHIAMI?',
                   style: TextStyle(
@@ -744,34 +768,115 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
                     fontFamily: 'Inter',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 TextField(
                   controller: _nameCtrl,
                   textCapitalization: TextCapitalization.words,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 24,
+                    fontSize: 22,
                     fontWeight: FontWeight.w700,
                     fontFamily: 'Inter',
                   ),
                   decoration: const InputDecoration(
                     border: InputBorder.none,
+                    filled: true,
+                    fillColor: Colors.transparent,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                     hintText: 'Il tuo nome',
                     hintStyle: TextStyle(
                       color: Colors.white24,
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // Età
+                const Text(
+                  'QUANTI ANNI HAI?',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _ageCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(3),
+                  ],
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Inter',
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    filled: true,
+                    fillColor: Colors.transparent,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: 'La tua età',
+                    hintStyle: TextStyle(
+                      color: Colors.white24,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Genere
+                const Text(
+                  'GENERE',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    fontFamily: 'Inter',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _GenderChip(
+                      label: 'Uomo',
+                      gender: Gender.male,
+                      selected: widget.data.gender,
+                      onTap: widget.onGenderChanged,
+                    ),
+                    const SizedBox(width: 8),
+                    _GenderChip(
+                      label: 'Donna',
+                      gender: Gender.female,
+                      selected: widget.data.gender,
+                      onTap: widget.onGenderChanged,
+                    ),
+                    const SizedBox(width: 8),
+                    _GenderChip(
+                      label: 'Altro',
+                      gender: Gender.other,
+                      selected: widget.data.gender,
+                      onTap: widget.onGenderChanged,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
-          // Minuti brainstorming — solo preset
+          // Minuti brainstorming — preset 2x2
           Container(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
             decoration: BoxDecoration(
@@ -791,184 +896,37 @@ class _Slide3BrainstormState extends State<_Slide3Brainstorm> {
                     fontFamily: 'Inter',
                   ),
                 ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  alignment: WrapAlignment.center,
-                  children: [5, 10, 15, 20].map((v) => _PresetChip(
-                    label: '$v min',
-                    isSelected: widget.data.brainstormMinutes == v,
-                    onTap: () {
-                      _minCtrl.text = v.toString();
-                      widget.onMinutesChanged(v);
-                    },
-                  )).toList(),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Slide 4 — Il viaggio inizia adesso ──────────────────────────────────────
-
-class _Slide4Journey extends StatelessWidget {
-  const _Slide4Journey(
-      {required this.data, required this.onAiChanged});
-  final _OnboardingData data;
-  final ValueChanged<String> onAiChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(28, 8, 28, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          _SlideIcon(icon: PhosphorIcons.target(PhosphorIconsStyle.fill)),
-          const SizedBox(height: 28),
-
-          const Text(
-            'Il tuo viaggio inizia adesso',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              fontFamily: 'Inter',
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Scegli il tuo AI coach.\nPuoi cambiarlo in qualsiasi momento.',
-            style: TextStyle(
-              color: Colors.white60,
-              fontSize: 16,
-              height: 1.6,
-              fontFamily: 'Inter',
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-
-          // AI provider selection
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.04),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'SCEGLI IL TUO AI COACH',
-                  style: TextStyle(
-                    color: Colors.white38,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                    fontFamily: 'Inter',
-                  ),
-                ),
                 const SizedBox(height: 14),
-                ...[
-                  (
-                    'gemini',
-                    '✨',
-                    'Google Gemini',
-                    'Ottimo in italiano • Potente e veloce'
-                  ),
-                  (
-                    'openai',
-                    '🤖',
-                    'ChatGPT (OpenAI)',
-                    'GPT-4o-mini • Preciso e versatile'
-                  ),
-                  (
-                    'claude',
-                    '🧠',
-                    'Claude (Anthropic)',
-                    'Riflessivo e naturale • Ideale per coaching'
-                  ),
-                  (
-                    'none',
-                    '⏭️',
-                    'Sceglierò dopo',
-                    'Puoi configurarlo in seguito dalle Impostazioni'
-                  ),
-                ].map((item) {
-                  final (code, emoji, name, desc) = item;
-                  final isSelected = data.aiProvider == code;
-                  return GestureDetector(
-                    onTap: () => onAiChanged(code),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.cyan.withOpacity(0.10)
-                            : Colors.white.withOpacity(0.03),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected
-                              ? AppColors.cyan
-                              : Colors.white.withOpacity(0.08),
-                          width: isSelected ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(emoji,
-                              style: const TextStyle(fontSize: 22)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  name,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? AppColors.cyan
-                                        : Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14,
-                                    fontFamily: 'Inter',
-                                  ),
-                                ),
-                                Text(
-                                  desc,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? AppColors.cyan.withOpacity(0.65)
-                                        : Colors.white38,
-                                    fontSize: 11,
-                                    fontFamily: 'Inter',
-                                  ),
-                                ),
-                              ],
-                            ),
+                // 2x2 grid
+                Column(
+                  children: [
+                    Row(
+                      children: [5, 10].map((v) => Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: v == 5 ? 5 : 0, left: v == 10 ? 5 : 0),
+                          child: _BigPresetChip(
+                            label: '$v min',
+                            isSelected: widget.data.brainstormMinutes == v,
+                            onTap: () => widget.onMinutesChanged(v),
                           ),
-                          if (isSelected)
-                            PhosphorIcon(
-                              PhosphorIcons.checkCircle(
-                                  PhosphorIconsStyle.fill),
-                              color: AppColors.cyan,
-                              size: 18,
-                            ),
-                        ],
-                      ),
+                        ),
+                      )).toList(),
                     ),
-                  );
-                }),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [15, 20].map((v) => Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: v == 15 ? 5 : 0, left: v == 20 ? 5 : 0),
+                          child: _BigPresetChip(
+                            label: '$v min',
+                            isSelected: widget.data.brainstormMinutes == v,
+                            onTap: () => widget.onMinutesChanged(v),
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -1178,6 +1136,97 @@ class _LangChip extends StatelessWidget {
             color: isSelected ? AppColors.cyan : Colors.white54,
             fontSize: 13,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+            fontFamily: 'Inter',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GenderChip extends StatelessWidget {
+  const _GenderChip({
+    required this.label,
+    required this.gender,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final Gender gender;
+  final Gender selected;
+  final ValueChanged<Gender> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = selected == gender;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(gender),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppColors.cyan.withOpacity(0.15)
+                : Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected
+                  ? AppColors.cyan
+                  : Colors.white.withOpacity(0.12),
+              width: isSelected ? 1.5 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? AppColors.cyan : Colors.white54,
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+              fontFamily: 'Inter',
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BigPresetChip extends StatelessWidget {
+  const _BigPresetChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.cyan.withOpacity(0.15)
+              : Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.cyan : Colors.white.withOpacity(0.12),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: isSelected ? AppColors.cyan : Colors.white54,
+            fontSize: 15,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
             fontFamily: 'Inter',
           ),
         ),

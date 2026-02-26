@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -257,40 +258,50 @@ class _HomeScreenState extends State<HomeScreen> {
                           ? AppColors.navyMid
                           : AppColors.cyan.withOpacity(0.05),
                       borderColor: AppColors.cyan.withOpacity(0.2),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          PhosphorIcon(
-                            PhosphorIcons.quotes(PhosphorIconsStyle.fill),
-                            color: AppColors.cyan,
-                            size: 18,
+                          Row(
+                            children: [
+                              PhosphorIcon(
+                                PhosphorIcons.quotes(PhosphorIconsStyle.fill),
+                                color: AppColors.cyan,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Citazione del giorno',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.cyan.withOpacity(0.7),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '"${_quote!.text}"',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
-                                      ?.copyWith(
-                                    fontStyle: FontStyle.italic,
-                                    height: 1.5,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '— ${_quote!.author}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .labelSmall
-                                      ?.copyWith(
-                                    color: AppColors.cyan,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 10),
+                          Text(
+                            '"${_quote!.text}"',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                              fontStyle: FontStyle.italic,
+                              height: 1.6,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '— ${_quote!.author}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                              color: AppColors.cyan,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
                             ),
                           ),
                         ],
@@ -388,12 +399,13 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ─── Clarity Session Widget ───────────────────────────────────────────────────
-// Sostituisce: _StepCountCard + _SessionStartCard + WalkWidget + BrainstormWidget
-// Stato idle:   contatore passi giornalieri + bottone "Inizia"
-// Stato active: timer + stats + trascrizione live + bottone "Termina"
-// Stato done:   card "Momento completato"
+// Walking-Brain: 3 anelli concentrici + stati bottone dinamici
+// idle:   anelli vuoti + "Inizia WalkingBrain"
+// active: anelli con progresso live + "Interrompi sessione"
+// paused: anelli congelati + "Riprendi / Termina"
+// done:   card completamento + "Esporta Brain-Storming"
 
-enum _SessionPhase { idle, active, done }
+enum _SessionPhase { idle, active, paused, done }
 
 class _ClaritySessionWidget extends StatefulWidget {
   const _ClaritySessionWidget({
@@ -433,6 +445,9 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   bool _isRecording = false;
   String _accumulatedText = '';
   final _transcriptController = TextEditingController();
+
+  // Export dopo sessione completata
+  String _lastSavedTranscript = '';
 
   AppServices get _services => context.read<AppServices>();
 
@@ -571,6 +586,32 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     await _startListening();
   }
 
+  // ── Pausa / Riprendi sessione ─────────────────────────────────────────
+
+  Future<void> _pauseSession() async {
+    _isRecording = false;
+    if (_speechToText.isListening) await _speechToText.stop();
+    _services.gps.pauseWalk();
+    await _services.notifications.showWalkOngoing(
+      distance: _walkSession?.formattedDistance ?? '0.00',
+      time: _walkSession?.formattedTimeFull ?? '00:00:00',
+      isPaused: true,
+    );
+    if (mounted) setState(() => _phase = _SessionPhase.paused);
+  }
+
+  Future<void> _resumeSession() async {
+    _services.gps.resumeWalk();
+    _isRecording = true;
+    if (_speechAvailable) await _startListening();
+    await _services.notifications.showWalkOngoing(
+      distance: _walkSession?.formattedDistance ?? '0.00',
+      time: _walkSession?.formattedTimeFull ?? '00:00:00',
+      isPaused: false,
+    );
+    if (mounted) setState(() => _phase = _SessionPhase.active);
+  }
+
   // ── Ferma sessione ────────────────────────────────────────────────────
 
   Future<void> _stopSession() async {
@@ -647,6 +688,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     }
 
     setState(() {
+      _lastSavedTranscript = transcript;
       _walkSession = null;
       _currentSteps = 0;
       _stepCountBase = 0;
@@ -752,104 +794,44 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   Widget build(BuildContext context) {
     switch (_phase) {
       case _SessionPhase.idle:
-        return _buildIdle(context);
+        return _buildSessionCard(context);
       case _SessionPhase.active:
-        return _buildActive(context);
+        return _buildSessionCard(context);
+      case _SessionPhase.paused:
+        return _buildSessionCard(context);
       case _SessionPhase.done:
-        return _buildDone();
+        return _buildDone(context);
     }
   }
 
-  // ── Idle: contatore passi + bottone Inizia ────────────────────────────
+  // ── Session Card: 3 anelli + bottoni dinamici ────────────────────────
 
-  Widget _buildIdle(BuildContext context) {
-    final steps = widget.initialDayData?.walk?.stepCount ?? 0;
-    final goal = widget.userProfile?.stepGoal ?? 8000;
-
-    return Column(
-      children: [
-        _StepCountCard(steps: steps, goal: goal),
-        const SizedBox(height: 16),
-        GestureDetector(
-          onTap: _requestingPermission ? null : _startSession,
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0F1D4A), Color(0xFF162055)],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
-            ),
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                PhosphorIcon(
-                  PhosphorIcons.waves(PhosphorIconsStyle.fill),
-                  size: 34,
-                  color: AppColors.cyan,
-                ),
-                const SizedBox(width: 16),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Il tuo momento di chiarezza',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Timer · Passi · GPS · Voce — tutto insieme',
-                        style: TextStyle(color: Colors.white54, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                _requestingPermission
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          color: AppColors.cyan,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 9),
-                        decoration: BoxDecoration(
-                          color: AppColors.cyan,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text(
-                          'Inizia',
-                          style: TextStyle(
-                            color: Color(0xFF0A1128),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Active: timer grande + stats + trascrizione + Termina ─────────────
-
-  Widget _buildActive(BuildContext context) {
+  Widget _buildSessionCard(BuildContext context) {
     final session = _walkSession;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final stepGoal = widget.userProfile?.stepGoal ?? 8000;
+    final walkGoal = (widget.userProfile?.walkMinutesGoal ?? 30).toDouble();
+    final brainGoal = (widget.userProfile?.brainstormMinutesGoal ?? 10).toDouble();
+
+    // Dati passi: durante sessione usa _currentSteps, altrimenti dayData
+    final stepsDisplay = _phase == _SessionPhase.idle
+        ? (widget.initialDayData?.walk?.stepCount ?? 0)
+        : _currentSteps;
+    final stepsProgress = (stepsDisplay / stepGoal).clamp(0.0, 1.0);
+    final walkMin = session?.activeMinutes.toDouble() ?? 0.0;
+    final walkProgress = (walkMin / walkGoal).clamp(0.0, 1.0);
+    final brainProgress = (walkMin / brainGoal).clamp(0.0, 1.0); // stesso timer
+
+    final statusColor = _phase == _SessionPhase.active
+        ? AppColors.success
+        : _phase == _SessionPhase.paused
+            ? AppColors.warning
+            : AppColors.cyan.withOpacity(0.4);
+    final statusLabel = _phase == _SessionPhase.active
+        ? 'IN SESSIONE'
+        : _phase == _SessionPhase.paused
+            ? 'IN PAUSA'
+            : 'WALKING BRAIN';
 
     return Container(
       decoration: BoxDecoration(
@@ -858,57 +840,61 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
           end: Alignment.bottomCenter,
           colors: isDark
               ? [const Color(0xFF0A1830), const Color(0xFF0D1E3A)]
-              : [AppColors.cyan.withOpacity(0.06), Colors.white],
+              : [AppColors.cyan.withOpacity(0.04), Colors.white],
         ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cyan.withOpacity(0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.cyan.withOpacity(0.10),
-            blurRadius: 24,
-            spreadRadius: 2,
-          ),
-        ],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: _phase == _SessionPhase.idle
+              ? AppColors.cyan.withOpacity(0.2)
+              : AppColors.cyan.withOpacity(0.4),
+        ),
+        boxShadow: _phase != _SessionPhase.idle
+            ? [
+                BoxShadow(
+                  color: AppColors.cyan.withOpacity(0.12),
+                  blurRadius: 24,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
       ),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       child: Column(
         children: [
-          // Header: stato + indicatore REC
+          // ── Header status row ──────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
                 children: [
                   Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: statusColor,
                       shape: BoxShape.circle,
                     ),
                   ),
                   const SizedBox(width: 6),
-                  const Text(
-                    'SESSIONE IN CORSO',
+                  Text(
+                    statusLabel,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.success,
+                      color: statusColor,
                       letterSpacing: 1.0,
                     ),
                   ),
                 ],
               ),
-              if (_speechAvailable)
+              if (_phase == _SessionPhase.active && _speechAvailable)
                 Row(
                   children: [
                     Container(
-                      width: 7,
-                      height: 7,
+                      width: 6,
+                      height: 6,
                       decoration: BoxDecoration(
-                        color: _isRecording
-                            ? AppColors.error
-                            : Colors.grey,
+                        color: _isRecording ? AppColors.error : Colors.grey,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -927,70 +913,48 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
             ],
           ),
 
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
 
-          // Timer grande
-          Text(
-            session?.formattedTimeFull ?? '00:00:00',
-            style: TextStyle(
-              fontFamily: 'Courier New',
-              fontSize: 54,
-              fontWeight: FontWeight.w700,
-              color: AppColors.cyan,
-              height: 1.0,
-              letterSpacing: -1,
+          // ── 3 anelli concentrici ───────────────────────────────────
+          SizedBox(
+            width: 220,
+            height: 220,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CustomPaint(
+                  size: const Size(220, 220),
+                  painter: _ThreeRingPainter(
+                    stepsProgress: stepsProgress,
+                    brainProgress: brainProgress,
+                    walkProgress: walkProgress,
+                  ),
+                ),
+                // Centro anelli: contenuto fase
+                _buildRingCenter(context, session, stepsDisplay),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'WALK TIME',
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2.0,
-              color: AppColors.cyan.withOpacity(0.5),
-            ),
-          ),
 
-          const SizedBox(height: 22),
-
-          // Stats: Passi | KM | KM/H | KCAL
+          // ── Legenda anelli ─────────────────────────────────────────
+          const SizedBox(height: 12),
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _StatChip(
-                value: '$_currentSteps',
-                label: 'PASSI',
-                color: const Color(0xFF9C27B0),
-              ),
-              _statDivider(isDark),
-              _StatChip(
-                value: session?.formattedDistance ?? '0.00',
-                label: 'KM',
-                color: AppColors.cyan,
-              ),
-              _statDivider(isDark),
-              _StatChip(
-                value: session?.formattedSpeed ?? '0.0',
-                label: 'KM/H',
-                color: AppColors.cyan,
-              ),
-              _statDivider(isDark),
-              _StatChip(
-                value: session?.formattedCalories ?? '0',
-                label: 'KCAL',
-                color: const Color(0xFF4CAF50),
-              ),
+              _RingLegend(color: const Color(0xFF9C27B0), label: 'Passi'),
+              const SizedBox(width: 16),
+              _RingLegend(color: AppColors.cyan, label: 'Brainstorm'),
+              const SizedBox(width: 16),
+              _RingLegend(color: const Color(0xFF4CAF50), label: 'Cammino'),
             ],
           ),
 
-          // Trascrizione live
-          if (_speechAvailable) ...[
+          // ── Trascrizione live (solo active) ───────────────────────
+          if (_phase == _SessionPhase.active && _speechAvailable) ...[
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
-              constraints:
-                  const BoxConstraints(minHeight: 72, maxHeight: 150),
+              constraints: const BoxConstraints(minHeight: 60, maxHeight: 120),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: isDark
@@ -999,7 +963,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: _isRecording
-                      ? AppColors.error.withOpacity(0.4)
+                      ? AppColors.error.withOpacity(0.35)
                       : AppColors.cyan.withOpacity(0.15),
                 ),
               ),
@@ -1007,14 +971,12 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
                 reverse: true,
                 child: _transcriptController.text.isEmpty
                     ? Text(
-                        _isRecording
-                            ? 'Sto ascoltando...'
-                            : 'Parla quando sei pronto',
+                        'Sto ascoltando...',
                         style: TextStyle(
                           color: isDark
                               ? Colors.white.withOpacity(0.3)
                               : Colors.black26,
-                          fontSize: 13,
+                          fontSize: 12,
                           fontStyle: FontStyle.italic,
                         ),
                       )
@@ -1032,132 +994,361 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
           const SizedBox(height: 20),
 
-          // Bottone Termina
+          // ── Bottoni dinamici ───────────────────────────────────────
+          _buildActionButtons(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRingCenter(
+      BuildContext context, WalkSession? session, int stepsDisplay) {
+    switch (_phase) {
+      case _SessionPhase.idle:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(
+              PhosphorIcons.personSimpleWalk(PhosphorIconsStyle.fill),
+              size: 36,
+              color: AppColors.cyan.withOpacity(0.7),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '$stepsDisplay',
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppColors.cyan,
+                height: 1.0,
+                letterSpacing: -1,
+              ),
+            ),
+            const Text(
+              'passi',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.cyan,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        );
+      case _SessionPhase.active:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              session?.formattedTimeFull ?? '00:00:00',
+              style: const TextStyle(
+                fontFamily: 'Courier New',
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.cyan,
+                height: 1.0,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$stepsDisplay passi',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.cyan.withOpacity(0.7),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${session?.formattedDistance ?? '0.00'} km',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.cyan.withOpacity(0.5),
+              ),
+            ),
+          ],
+        );
+      case _SessionPhase.paused:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PhosphorIcon(
+              PhosphorIcons.pause(PhosphorIconsStyle.fill),
+              size: 32,
+              color: AppColors.warning,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              session?.formattedTimeFull ?? '00:00:00',
+              style: const TextStyle(
+                fontFamily: 'Courier New',
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.warning,
+                height: 1.0,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '$stepsDisplay passi',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.warning.withOpacity(0.7),
+              ),
+            ),
+          ],
+        );
+      case _SessionPhase.done:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildActionButtons(BuildContext context) {
+    switch (_phase) {
+      case _SessionPhase.idle:
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _requestingPermission ? null : _startSession,
+            icon: _requestingPermission
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2),
+                  )
+                : PhosphorIcon(
+                    PhosphorIcons.play(PhosphorIconsStyle.fill),
+                    size: 18,
+                    color: const Color(0xFF0A1128),
+                  ),
+            label: Text(
+              _requestingPermission ? 'Attendere…' : 'Inizia WalkingBrain',
+              style: const TextStyle(
+                color: Color(0xFF0A1128),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.cyan,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        );
+      case _SessionPhase.active:
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _pauseSession,
+            icon: PhosphorIcon(
+              PhosphorIcons.pause(PhosphorIconsStyle.fill),
+              size: 18,
+              color: Colors.white,
+            ),
+            label: const Text(
+              'Interrompi sessione',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF8C00),
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        );
+      case _SessionPhase.paused:
+        return Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _resumeSession,
+                icon: PhosphorIcon(
+                  PhosphorIcons.play(PhosphorIconsStyle.fill),
+                  size: 16,
+                  color: const Color(0xFF0A1128),
+                ),
+                label: const Text(
+                  'Riprendi',
+                  style: TextStyle(
+                    color: Color(0xFF0A1128),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.cyan,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _stopSession,
+                icon: PhosphorIcon(
+                  PhosphorIcons.stop(PhosphorIconsStyle.fill),
+                  size: 16,
+                  color: Colors.white,
+                ),
+                label: const Text(
+                  'Termina',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.error,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+          ],
+        );
+      case _SessionPhase.done:
+        return const SizedBox.shrink();
+    }
+  }
+
+  // ── Done: card completamento + esporta ────────────────────────────────
+
+  Widget _buildDone(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+          decoration: BoxDecoration(
+            color: AppColors.cyan.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.cyan.withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.cyan.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: PhosphorIcon(
+                    PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
+                    color: AppColors.cyan,
+                    size: 22,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sessione completata oggi',
+                      style: TextStyle(
+                        color: AppColors.cyan,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Ottimo lavoro. Torna domani per il prossimo passo.',
+                      style: TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_lastSavedTranscript.isNotEmpty) ...[
+          const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _stopSession,
+              onPressed: () => _exportBrainstorm(context),
               icon: PhosphorIcon(
-                PhosphorIcons.stop(PhosphorIconsStyle.fill),
+                PhosphorIcons.shareNetwork(PhosphorIconsStyle.fill),
                 size: 18,
-                color: Colors.white,
+                color: isDark ? const Color(0xFF0A1128) : Colors.white,
               ),
-              label: const Text(
-                'Termina sessione',
-                style: TextStyle(color: Colors.white),
+              label: Text(
+                'Esporta Brain-Storming',
+                style: TextStyle(
+                  color: isDark ? const Color(0xFF0A1128) : Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
+                backgroundColor: isDark ? AppColors.cyanLight : AppColors.cyan,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                    borderRadius: BorderRadius.circular(14)),
               ),
             ),
           ),
         ],
-      ),
+      ],
     );
   }
 
-  // ── Done: card "Momento completato" ───────────────────────────────────
+  Future<void> _exportBrainstorm(BuildContext context) async {
+    final text = '''
+🧠 Brain-Storming MindStep — ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}
 
-  Widget _buildDone() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        color: AppColors.cyan.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cyan.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.cyan.withOpacity(0.15),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: PhosphorIcon(
-                PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                color: AppColors.cyan,
-                size: 20,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Momento completato oggi',
-                  style: TextStyle(
-                    color: AppColors.cyan,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Ottimo lavoro. Domani sarà ancora qui per te.',
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+$_lastSavedTranscript
+
+---
+Inviato dall'app MindStep. Puoi analizzare queste idee e aiutarmi a organizzarle?
+''';
+    try {
+      await Share.share(text, subject: 'Brain-Storming MindStep');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore export: $e')),
+        );
+      }
+    }
   }
-
-  Widget _statDivider(bool isDark) => Text(
-        '|',
-        style: TextStyle(
-          color:
-              isDark ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.12),
-          fontSize: 18,
-        ),
-      );
 }
 
-// ── Stat chip per sessione attiva ─────────────────────────────────────────────
+// ── Ring legend item ──────────────────────────────────────────────────────────
 
-class _StatChip extends StatelessWidget {
-  const _StatChip({
-    required this.value,
-    required this.label,
-    required this.color,
-  });
-
-  final String value;
-  final String label;
+class _RingLegend extends StatelessWidget {
+  const _RingLegend({required this.color, required this.label});
   final Color color;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            fontFamily: 'Courier New',
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: color,
-            height: 1.0,
-          ),
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(width: 5),
         Text(
           label,
           style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            color: color.withOpacity(0.7),
-            letterSpacing: 0.8,
+            fontSize: 10,
+            color: color.withOpacity(0.8),
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -1356,144 +1547,90 @@ class _SummaryStat extends StatelessWidget {
   }
 }
 
-// ─── Step Count Card (usato in idle) ─────────────────────────────────────────
+// ─── Three Ring Painter ───────────────────────────────────────────────────────
 
-class _StepCountCard extends StatelessWidget {
-  const _StepCountCard({required this.steps, required this.goal});
-  final int steps;
-  final int goal;
+class _ThreeRingPainter extends CustomPainter {
+  const _ThreeRingPainter({
+    required this.stepsProgress,
+    required this.brainProgress,
+    required this.walkProgress,
+  });
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final progress = goal > 0 ? (steps / goal).clamp(0.0, 1.0) : 0.0;
-    final percent = (progress * 100).round();
+  final double stepsProgress;
+  final double brainProgress;
+  final double walkProgress;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: isDark
-              ? [const Color(0xFF0F1D4A), const Color(0xFF0D1A40)]
-              : [AppColors.cyan.withOpacity(0.04), AppColors.cyan.withOpacity(0.01)],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '$steps',
-                      style: const TextStyle(
-                        fontSize: 52,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.cyan,
-                        fontFamily: 'Inter',
-                        height: 1.0,
-                        letterSpacing: -2,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'passi',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.cyan.withOpacity(0.7),
-                          fontFamily: 'Inter',
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 5,
-                    backgroundColor: AppColors.cyan.withOpacity(0.12),
-                    valueColor: const AlwaysStoppedAnimation(AppColors.cyan),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '$percent% dell\'obiettivo • $goal passi',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDark ? Colors.white38 : Colors.black38,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          SizedBox(
-            width: 64,
-            height: 64,
-            child: CustomPaint(
-              painter: _MiniRingPainter(progress: progress),
-              child: Center(
-                child: Text(
-                  '$percent%',
-                  style: const TextStyle(
-                    color: AppColors.cyan,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniRingPainter extends CustomPainter {
-  const _MiniRingPainter({required this.progress});
-  final double progress;
+  static const _ringWidth = 14.0;
+  static const _gap = 10.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 4;
-    final paint = Paint()
+    final outerRadius = size.width / 2 - 4;
+    final midRadius = outerRadius - _ringWidth - _gap;
+    final innerRadius = midRadius - _ringWidth - _gap;
+
+    final trackPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
+      ..strokeWidth = _ringWidth
       ..strokeCap = StrokeCap.round;
 
-    canvas.drawCircle(center, radius,
-        paint..color = AppColors.cyan.withOpacity(0.12));
+    final progressPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _ringWidth
+      ..strokeCap = StrokeCap.round;
 
-    if (progress <= 0) return;
+    // ── Outer ring: steps (purple) ──────────────────────────────────
+    canvas.drawCircle(
+        center,
+        outerRadius,
+        trackPaint..color = const Color(0xFF9C27B0).withOpacity(0.12));
+    if (stepsProgress > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: outerRadius),
+        -pi / 2,
+        2 * pi * stepsProgress.clamp(0.0, 1.0),
+        false,
+        progressPaint..color = const Color(0xFF9C27B0),
+      );
+    }
 
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius),
-      -pi / 2,
-      2 * pi * progress,
-      false,
-      paint..color = AppColors.cyan,
-    );
+    // ── Middle ring: brainstorm (cyan) ──────────────────────────────
+    canvas.drawCircle(
+        center,
+        midRadius,
+        trackPaint..color = AppColors.cyan.withOpacity(0.12));
+    if (brainProgress > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: midRadius),
+        -pi / 2,
+        2 * pi * brainProgress.clamp(0.0, 1.0),
+        false,
+        progressPaint..color = AppColors.cyan,
+      );
+    }
+
+    // ── Inner ring: walk minutes (green) ───────────────────────────
+    canvas.drawCircle(
+        center,
+        innerRadius,
+        trackPaint..color = const Color(0xFF4CAF50).withOpacity(0.12));
+    if (walkProgress > 0) {
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: innerRadius),
+        -pi / 2,
+        2 * pi * walkProgress.clamp(0.0, 1.0),
+        false,
+        progressPaint..color = const Color(0xFF4CAF50),
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(_MiniRingPainter old) => old.progress != progress;
+  bool shouldRepaint(_ThreeRingPainter old) =>
+      old.stepsProgress != stepsProgress ||
+      old.brainProgress != brainProgress ||
+      old.walkProgress != walkProgress;
 }
 
 // ─── Weather Badge (top right, animated) ─────────────────────────────────────

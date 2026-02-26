@@ -111,6 +111,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: _ProfileContent(
                     profile: _profile,
                     onEdit: () => _editProfile(context),
+                    onGoals: () => context.push('/setup/extras'),
                   ),
                 ),
               ),
@@ -473,9 +474,14 @@ class _AccordionSectionState extends State<_AccordionSection> {
 // ── Profile Content ───────────────────────────────────────────────────────────
 
 class _ProfileContent extends StatelessWidget {
-  const _ProfileContent({required this.profile, required this.onEdit});
+  const _ProfileContent({
+    required this.profile,
+    required this.onEdit,
+    required this.onGoals,
+  });
   final UserProfile? profile;
   final VoidCallback onEdit;
+  final VoidCallback onGoals;
 
   @override
   Widget build(BuildContext context) {
@@ -485,27 +491,57 @@ class _ProfileContent extends StatelessWidget {
         style: Theme.of(context).textTheme.bodySmall,
       );
     }
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        backgroundColor: AppColors.cyan.withOpacity(0.15),
-        child: Text(
-          profile!.firstName.isNotEmpty
-              ? profile!.firstName[0].toUpperCase()
-              : '?',
-          style: const TextStyle(
-            color: AppColors.cyan,
-            fontWeight: FontWeight.w700,
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: CircleAvatar(
+            backgroundColor: AppColors.cyan.withOpacity(0.15),
+            child: Text(
+              profile!.firstName.isNotEmpty
+                  ? profile!.firstName[0].toUpperCase()
+                  : '?',
+              style: const TextStyle(
+                color: AppColors.cyan,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
+          title: Text(
+            profile!.name,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text('${profile!.age} anni · ${profile!.genderLabel}'),
+          trailing: const Icon(Icons.edit_outlined, size: 18),
+          onTap: onEdit,
         ),
-      ),
-      title: Text(
-        profile!.name,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Text('${profile!.age} anni · ${profile!.genderLabel}'),
-      trailing: const Icon(Icons.edit_outlined, size: 18),
-      onTap: onEdit,
+        const SizedBox(height: 8),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.cyan.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Center(
+              child: PhosphorIcon(
+                PhosphorIcons.target(PhosphorIconsStyle.fill),
+                size: 18,
+                color: AppColors.cyan,
+              ),
+            ),
+          ),
+          title: const Text(
+            'Obiettivi Personali',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: const Text('Modifica i tuoi obiettivi giornalieri'),
+          trailing: const Icon(Icons.chevron_right, size: 18),
+          onTap: onGoals,
+        ),
+      ],
     );
   }
 }
