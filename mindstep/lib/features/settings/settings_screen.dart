@@ -315,7 +315,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final d = day as Map<String, dynamic>;
         final walk = d['walk'] as Map<String, dynamic>?;
         totalSteps += (walk?['stepCount'] ?? 0) as int;
-        totalWalkMin += ((walk?['activeMilliseconds'] ?? 0) as num ~/ 60000);
+        totalWalkMin += ((walk?['activeMilliseconds'] ?? 0) as int) ~/ 60000;
         totalBrainstormMin += (d['brainstormMinutes'] ?? 0) as int;
         final note = (d['brainstormNote'] ?? '').toString().trim();
         if (note.isNotEmpty) notes.add('• $note');
