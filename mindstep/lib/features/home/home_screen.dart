@@ -446,7 +446,6 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   bool _speechAvailable = false;
   bool _isRecording = false;
   String _accumulatedText = '';
-  int _listenVersion = 0; // invalidates stale onResult callbacks after restart
   final _transcriptController = TextEditingController();
 
   // Export dopo sessione completata
@@ -576,17 +575,28 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   // ── Speech helpers ────────────────────────────────────────────────────
 
   Future<void> _startListening() async {
-    final version = ++_listenVersion;
-    _accumulatedText = _transcriptController.text.trim();
+    // Capture the current text as a local base for this listen session.
+    // Using a local variable (not the instance field) ensures that stale
+    // onResult callbacks from a previous session — which fire with
+    // recognizedWords == base — are stripped to empty and ignored,
+    // preventing the duplication bug without blocking valid new results.
+    final base = _transcriptController.text.trim();
+    _accumulatedText = base;
     await _speechToText.listen(
       onResult: (result) {
-        // Ignore callbacks from a previous listen session to prevent duplication
-        if (!mounted || !_isRecording || version != _listenVersion) return;
-        final newPart = result.recognizedWords;
-        final sep =
-            _accumulatedText.isNotEmpty && newPart.isNotEmpty ? ' ' : '';
+        if (!mounted || !_isRecording) return;
+        String recognized = result.recognizedWords;
+        // Strip the already-accumulated prefix from recognizedWords.
+        // This handles two cases:
+        //   1. Stale callback: fires with exactly `base` → becomes empty → skipped.
+        //   2. iOS carry-over: new sub-session prepends previous text → stripped cleanly.
+        if (base.isNotEmpty && recognized.startsWith(base)) {
+          recognized = recognized.substring(base.length).trimLeft();
+        }
+        if (recognized.isEmpty) return;
+        final sep = base.isNotEmpty ? ' ' : '';
         setState(() {
-          _transcriptController.text = '$_accumulatedText$sep$newPart';
+          _transcriptController.text = '$base$sep$recognized';
           _transcriptController.selection = TextSelection.fromPosition(
             TextPosition(offset: _transcriptController.text.length),
           );
@@ -642,7 +652,6 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
   Future<void> _stopSession() async {
     _isRecording = false;
-    _listenVersion++; // invalidate any pending onResult callbacks
     if (_speechToText.isListening) await _speechToText.stop();
     _stepSub?.cancel();
 
