@@ -446,6 +446,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   bool _speechAvailable = false;
   bool _isRecording = false;
   String _accumulatedText = '';
+  int _listenVersion = 0; // invalidates stale onResult callbacks after restart
   final _transcriptController = TextEditingController();
 
   // Export dopo sessione completata
@@ -575,10 +576,12 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   // ── Speech helpers ────────────────────────────────────────────────────
 
   Future<void> _startListening() async {
+    final version = ++_listenVersion;
     _accumulatedText = _transcriptController.text.trim();
     await _speechToText.listen(
       onResult: (result) {
-        if (!mounted || !_isRecording) return;
+        // Ignore callbacks from a previous listen session to prevent duplication
+        if (!mounted || !_isRecording || version != _listenVersion) return;
         final newPart = result.recognizedWords;
         final sep =
             _accumulatedText.isNotEmpty && newPart.isNotEmpty ? ' ' : '';
@@ -639,11 +642,16 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
   Future<void> _stopSession() async {
     _isRecording = false;
-    if (_speechToText.isListening) _speechToText.stop();
+    _listenVersion++; // invalidate any pending onResult callbacks
+    if (_speechToText.isListening) await _speechToText.stop();
     _stepSub?.cancel();
 
     final completed = _services.gps.stopWalk();
-    await _services.notifications.cancelWalkOngoing();
+    try {
+      await _services.notifications.cancelWalkOngoing();
+    } catch (_) {}
+
+    if (!mounted) return;
 
     if (completed == null) {
       setState(() => _phase = _SessionPhase.idle);
@@ -651,7 +659,6 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     }
 
     final withSteps = completed.copyWith(stepCount: _currentSteps);
-    if (!mounted) return;
     _showSummary(withSteps);
   }
 
