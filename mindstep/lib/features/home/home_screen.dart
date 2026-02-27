@@ -575,28 +575,15 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   // ── Speech helpers ────────────────────────────────────────────────────
 
   Future<void> _startListening() async {
-    // Capture the current text as a local base for this listen session.
-    // Using a local variable (not the instance field) ensures that stale
-    // onResult callbacks from a previous session — which fire with
-    // recognizedWords == base — are stripped to empty and ignored,
-    // preventing the duplication bug without blocking valid new results.
-    final base = _transcriptController.text.trim();
-    _accumulatedText = base;
+    _accumulatedText = _transcriptController.text.trim();
     await _speechToText.listen(
       onResult: (result) {
         if (!mounted || !_isRecording) return;
-        String recognized = result.recognizedWords;
-        // Strip the already-accumulated prefix from recognizedWords.
-        // This handles two cases:
-        //   1. Stale callback: fires with exactly `base` → becomes empty → skipped.
-        //   2. iOS carry-over: new sub-session prepends previous text → stripped cleanly.
-        if (base.isNotEmpty && recognized.startsWith(base)) {
-          recognized = recognized.substring(base.length).trimLeft();
-        }
-        if (recognized.isEmpty) return;
-        final sep = base.isNotEmpty ? ' ' : '';
+        final newPart = result.recognizedWords;
+        final sep =
+            _accumulatedText.isNotEmpty && newPart.isNotEmpty ? ' ' : '';
         setState(() {
-          _transcriptController.text = '$base$sep$recognized';
+          _transcriptController.text = '$_accumulatedText$sep$newPart';
           _transcriptController.selection = TextSelection.fromPosition(
             TextPosition(offset: _transcriptController.text.length),
           );
@@ -610,6 +597,12 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
   Future<void> _restartListening() async {
     if (!_isRecording || !_speechAvailable) return;
+    // Stop the current session BEFORE updating _accumulatedText.
+    // The stopping session will fire its final onResult with the OLD
+    // _accumulatedText (e.g. ''), so recognised text is just re-set to
+    // what was already in the controller — no duplication.
+    // Only after stop completes do we lock in the current text as the new base.
+    if (_speechToText.isListening) await _speechToText.stop();
     _accumulatedText = _transcriptController.text.trim();
     await Future.delayed(const Duration(milliseconds: 300));
     if (!mounted || !_isRecording) return;
