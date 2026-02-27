@@ -438,6 +438,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   // Pedometro
   int _stepCountBase = 0;
   int _currentSteps = 0;
+  int _stepsBeforePause = 0; // passi accumulati prima della pausa corrente
   StreamSubscription<StepCount>? _stepSub;
 
   // Voce
@@ -492,13 +493,14 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
   void _initPedometer() {
     _stepSub?.cancel();
+    _stepCountBase = 0; // reset: il primo evento fissa il nuovo baseline
     try {
       _stepSub = Pedometer.stepCountStream.listen(
         (event) {
           if (!mounted) return;
           if (_stepCountBase == 0) _stepCountBase = event.steps;
-          final steps = event.steps - _stepCountBase;
-          setState(() => _currentSteps = steps > 0 ? steps : 0);
+          final delta = event.steps - _stepCountBase;
+          setState(() => _currentSteps = _stepsBeforePause + (delta > 0 ? delta : 0));
         },
         onError: (_) {},
         cancelOnError: false,
@@ -542,6 +544,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     // Pedometro
     _stepCountBase = 0;
     _currentSteps = 0;
+    _stepsBeforePause = 0;
     _initPedometer();
 
     // GPS
@@ -605,6 +608,10 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   Future<void> _pauseSession() async {
     _isRecording = false;
     if (_speechToText.isListening) await _speechToText.stop();
+    // Ferma il contapassi e salva i passi accumulati fino a ora
+    _stepsBeforePause = _currentSteps;
+    _stepSub?.cancel();
+    _stepSub = null;
     _services.gps.pauseWalk();
     await _services.notifications.showWalkOngoing(
       distance: _walkSession?.formattedDistance ?? '0.00',
@@ -616,6 +623,8 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
   Future<void> _resumeSession() async {
     _services.gps.resumeWalk();
+    // Riavvia il contapassi dal punto in cui era
+    _initPedometer();
     _isRecording = true;
     if (_speechAvailable) await _startListening();
     await _services.notifications.showWalkOngoing(
