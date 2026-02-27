@@ -8,6 +8,7 @@ import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../app.dart';
 import '../../core/constants/app_colors.dart';
@@ -523,6 +524,19 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
         );
       }
       return;
+    }
+
+    // Permesso Activity Recognition (contapassi Android 10+)
+    final actPerm = await Permission.activityRecognition.request();
+    if (actPerm.isDenied || actPerm.isPermanentlyDenied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Permesso "Attività fisica" necessario per contare i passi.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
     }
 
     // Pedometro
