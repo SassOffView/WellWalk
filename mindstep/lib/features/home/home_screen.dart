@@ -511,7 +511,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     setState(() => _requestingPermission = true);
 
     final hasPerm = await _services.gps.requestPermissions(
-      backgroundRequired: _services.isPro,
+      backgroundRequired: false,
     );
 
     setState(() => _requestingPermission = false);
@@ -835,13 +835,13 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: isDark
-              ? [const Color(0xFF0A1830), const Color(0xFF0D1E3A)]
-              : [AppColors.cyan.withOpacity(0.04), Colors.white],
-        ),
+        gradient: isDark
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0A1830), Color(0xFF0D1E3A)],
+              )
+            : null,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: _phase == _SessionPhase.idle
