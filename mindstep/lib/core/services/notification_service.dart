@@ -274,6 +274,44 @@ class NotificationService {
     return granted ?? false;
   }
 
+  // ── REMINDER SINGOLA ROUTINE (PRO) ──────────────────────────────────
+
+  static int _routineItemId(String routineId) =>
+      5000 + routineId.hashCode.abs() % 1000;
+
+  Future<void> scheduleRoutineItemReminder({
+    required String routineId,
+    required String routineName,
+    required int hour,
+    required int minute,
+  }) async {
+    final id = _routineItemId(routineId);
+    await _plugin.cancel(id);
+    final scheduledDate = _nextInstanceOf(hour, minute);
+
+    await _plugin.zonedSchedule(
+      id,
+      'Routine: $routineName ⏰',
+      'È il momento di completare la tua abitudine!',
+      scheduledDate,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelReminders,
+          'Promemoria',
+          importance: Importance.defaultImportance,
+        ),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time,
+    );
+  }
+
+  Future<void> cancelRoutineItemReminder(String routineId) async {
+    await _plugin.cancel(_routineItemId(routineId));
+  }
+
   Future<void> cancelAll() async => await _plugin.cancelAll();
 
   // ── HELPER ───────────────────────────────────────────────────────────

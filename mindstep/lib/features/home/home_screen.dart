@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -194,6 +195,111 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _showWeatherPopup(BuildContext context, WeatherData weather) {
+    final advice = _walkAdvice(weather);
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.lightBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(weather.emoji, style: const TextStyle(fontSize: 56)),
+            const SizedBox(height: 12),
+            Text(
+              weather.tempFormatted,
+              style: const TextStyle(
+                fontSize: 42,
+                fontWeight: FontWeight.w800,
+                color: AppColors.cyan,
+                height: 1.0,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              weather.description,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            if (weather.city.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                weather.city,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.lightTextSecondary,
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: advice.$2.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: advice.$2.withOpacity(0.25)),
+              ),
+              child: Row(
+                children: [
+                  Text(advice.$3, style: const TextStyle(fontSize: 24)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      advice.$1,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: advice.$2,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Ritorna (messaggio, colore, emoji) in base al weatherCode
+  (String, Color, String) _walkAdvice(WeatherData w) {
+    final code = w.weatherCode;
+    if (code == 0) {
+      return ('Giornata perfetta per camminare! Il sole ti aspetta fuori.', AppColors.success, '🏃');
+    } else if (code <= 2) {
+      return ('Buona giornata per una camminata. Qualche nuvola, ma piacevole.', AppColors.cyan, '👟');
+    } else if (code <= 9) {
+      return ('Foschia o nebbia. Porta con te un po\' di cautela.', AppColors.warning, '🌫️');
+    } else if (code <= 29) {
+      return ('Leggere precipitazioni. Considera un percorso al coperto.', AppColors.warning, '☂️');
+    } else if (code <= 49) {
+      return ('Nebbia intensa. Meglio rimandare la camminata.', AppColors.error.withOpacity(0.8), '🌁');
+    } else if (code <= 59) {
+      return ('Pioggerella leggera. Con un impermeabile puoi farcela!', AppColors.warning, '🌂');
+    } else if (code <= 69) {
+      return ('Pioggia. Giornata ideale per il brainstorm al chiuso.', AppColors.error, '🌧️');
+    } else if (code <= 79) {
+      return ('Neve o grandine. Meglio restare dentro oggi.', AppColors.lightTextSecondary, '❄️');
+    } else if (code <= 99) {
+      return ('Temporale in corso. Rimanda la camminata per sicurezza.', AppColors.error, '⛈️');
+    }
+    return ('Controlla le previsioni prima di uscire.', AppColors.cyan, '🌤️');
+  }
+
   String _getGreeting() {
     final h = DateTime.now().hour;
     if (h < 12) return AppStrings.homeGreetingMorning;
@@ -242,8 +348,13 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                      // Widget meteo animato (top right)
-                      _WeatherBadge(weather: _weather),
+                      // Widget meteo animato (top right) — tap per popup
+                      GestureDetector(
+                        onTap: _weather != null
+                            ? () => _showWeatherPopup(context, _weather!)
+                            : null,
+                        child: _WeatherBadge(weather: _weather),
+                      ),
                     ],
                   ),
                 ),
@@ -452,6 +563,12 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   String _lastSavedTranscript = '';
 
   AppServices get _services => context.read<AppServices>();
+
+  int get _wordCount {
+    final text = _transcriptController.text.trim();
+    if (text.isEmpty) return 0;
+    return text.split(RegExp(r'\s+')).length;
+  }
 
   @override
   void initState() {
@@ -981,6 +1098,44 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
             ],
           ),
 
+          // ── Stats row (Passi | Km | Km/h | Parole) ────────────────
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.black.withOpacity(0.15)
+                  : AppColors.cyan.withOpacity(0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.cyan.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+                _StatChip(
+                  label: 'Passi',
+                  value: '$stepsDisplay',
+                ),
+                _StatDivider(),
+                _StatChip(
+                  label: 'Km',
+                  value: session?.formattedDistance ?? '0.00',
+                ),
+                _StatDivider(),
+                _StatChip(
+                  label: 'Km/h',
+                  value: session != null
+                      ? session.avgSpeedKmh.toStringAsFixed(1)
+                      : '0.0',
+                ),
+                _StatDivider(),
+                _StatChip(
+                  label: 'Parole',
+                  value: '$_wordCount',
+                ),
+              ],
+            ),
+          ),
+
           // ── Trascrizione live (solo active) ───────────────────────
           if (_phase == _SessionPhase.active && _speechAvailable) ...[
             const SizedBox(height: 16),
@@ -1139,36 +1294,76 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   Widget _buildActionButtons(BuildContext context) {
     switch (_phase) {
       case _SessionPhase.idle:
-        return SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: _requestingPermission ? null : _startSession,
-            icon: _requestingPermission
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                        color: Colors.white, strokeWidth: 2),
-                  )
-                : PhosphorIcon(
-                    PhosphorIcons.play(PhosphorIconsStyle.fill),
-                    size: 18,
-                    color: const Color(0xFF0A1128),
+        return Column(
+          children: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _requestingPermission ? null : _startSession,
+                icon: _requestingPermission
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      )
+                    : PhosphorIcon(
+                        PhosphorIcons.play(PhosphorIconsStyle.fill),
+                        size: 18,
+                        color: const Color(0xFF0A1128),
+                      ),
+                label: Text(
+                  _requestingPermission ? 'Attendere…' : 'Inizia WalkingBrain',
+                  style: const TextStyle(
+                    color: Color(0xFF0A1128),
+                    fontWeight: FontWeight.w700,
                   ),
-            label: Text(
-              _requestingPermission ? 'Attendere…' : 'Inizia WalkingBrain',
-              style: const TextStyle(
-                color: Color(0xFF0A1128),
-                fontWeight: FontWeight.w700,
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.cyan,
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
               ),
             ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.cyan,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                // AI Walking Assistant (PRO)
+                Expanded(
+                  child: _AiAssistantButton(isPro: _services.isPro),
+                ),
+                const SizedBox(width: 10),
+                // Esporta
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {},
+                    icon: PhosphorIcon(
+                      PhosphorIcons.export(PhosphorIconsStyle.fill),
+                      size: 16,
+                      color: const Color(0xFF9C27B0),
+                    ),
+                    label: const Text(
+                      'Esporta →',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF9C27B0),
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(
+                          color: Color(0xFF9C27B0), width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
+          ],
         );
       case _SessionPhase.active:
         return SizedBox(
@@ -1773,6 +1968,127 @@ class _WeatherBadgeState extends State<_WeatherBadge>
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+// ─── Stat Chip (piccola stat nella sessione) ──────────────────────────────────
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: AppColors.cyan,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: AppColors.cyan.withOpacity(0.6),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 28,
+      color: AppColors.cyan.withOpacity(0.15),
+    );
+  }
+}
+
+// ─── AI Walking Assistant Button ──────────────────────────────────────────────
+
+class _AiAssistantButton extends StatelessWidget {
+  const _AiAssistantButton({required this.isPro});
+  final bool isPro;
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () {
+        if (!isPro) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                  'L\'AI Walking Assistant è disponibile nel piano PRO.'),
+              action: SnackBarAction(label: 'Upgrade', onPressed: () {}),
+            ),
+          );
+          return;
+        }
+        context.push('/coach');
+      },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.cyan.withOpacity(0.15),
+        foregroundColor: AppColors.cyan,
+        side: const BorderSide(color: AppColors.cyan, width: 1.5),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 0,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          PhosphorIcon(
+            PhosphorIcons.robot(PhosphorIconsStyle.fill),
+            size: 16,
+            color: AppColors.cyan,
+          ),
+          const SizedBox(width: 6),
+          const Flexible(
+            child: Text(
+              'AI Assistant',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppColors.cyan,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 4),
+          if (!isPro)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'PRO',
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.warning,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
