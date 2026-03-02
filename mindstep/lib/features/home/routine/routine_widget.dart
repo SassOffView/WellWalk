@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../app.dart';
@@ -143,27 +144,33 @@ class _RoutineWidgetState extends State<RoutineWidget> {
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
-                  // PRO badge
-                  if (!services.isPro)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                            color: AppColors.warning.withOpacity(0.4)),
-                      ),
-                      child: const Text(
-                        'PRO',
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.warning,
-                          letterSpacing: 0.5,
-                        ),
+                  // PRO badge — sempre visibile
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: services.isPro
+                          ? AppColors.success.withOpacity(0.12)
+                          : AppColors.warning.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: services.isPro
+                            ? AppColors.success.withOpacity(0.4)
+                            : AppColors.warning.withOpacity(0.4),
                       ),
                     ),
+                    child: Text(
+                      services.isPro ? '✓ PRO' : 'PRO',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: services.isPro
+                            ? AppColors.success
+                            : AppColors.warning,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 6),
                   // Add button
                   GestureDetector(
@@ -293,25 +300,27 @@ class _RoutineWidgetState extends State<RoutineWidget> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (!services.isPro) ...[
-                    const SizedBox(width: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: AppColors.warning.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'PRO',
-                        style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.warning,
-                        ),
+                  const SizedBox(width: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: services.isPro
+                          ? AppColors.success.withOpacity(0.12)
+                          : AppColors.warning.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      services.isPro ? '✓ PRO' : 'PRO',
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w800,
+                        color: services.isPro
+                            ? AppColors.success
+                            : AppColors.warning,
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -375,18 +384,130 @@ class _RoutineWidgetState extends State<RoutineWidget> {
     }
   }
 
+  void _showProFeatureSheet(
+    BuildContext context, {
+    required String emoji,
+    required String featureName,
+    required String description,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF0D1E3A) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.warning.withOpacity(0.35)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(emoji, style: const TextStyle(fontSize: 42)),
+            const SizedBox(height: 12),
+            Text(
+              featureName,
+              style: TextStyle(
+                fontSize: 20, fontWeight: FontWeight.w800,
+                color: isDark ? Colors.white : const Color(0xFF1A237E),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.warning.withOpacity(0.4)),
+              ),
+              child: const Text(
+                'Funzione PRO',
+                style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w800,
+                  color: AppColors.warning, letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 15, height: 1.5,
+                color: isDark ? Colors.white70 : Colors.grey.shade700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  context.push('/paywall');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.warning,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.lock_open_rounded, size: 18, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'Sblocca con PRO',
+                      style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Non adesso',
+                style: TextStyle(
+                  color: isDark ? Colors.white38 : Colors.grey.shade500,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showReminderPicker(
       AppServices services, RoutineItem routine) async {
     if (!services.isPro) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-              'I reminder per singola routine sono una funzione PRO.'),
-          action: SnackBarAction(
-            label: 'Upgrade',
-            onPressed: () {},
-          ),
-        ),
+      _showProFeatureSheet(
+        context,
+        emoji: '⏰',
+        featureName: 'Reminder Routine',
+        description:
+            'Imposta un promemoria personalizzato per ogni singola '
+            'abitudine della tua routine giornaliera.\n'
+            'Ricevi notifiche all\'orario che preferisci.',
       );
       return;
     }
@@ -419,14 +540,14 @@ class _RoutineWidgetState extends State<RoutineWidget> {
 
   void _showAddRoutineDialog(AppServices services) {
     if (!services.isPro && _routines.length >= 5) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(AppStrings.routineFreeLimitReached),
-          action: SnackBarAction(
-            label: 'Upgrade',
-            onPressed: () {},
-          ),
-        ),
+      _showProFeatureSheet(
+        context,
+        emoji: '📋',
+        featureName: 'Routine Illimitate',
+        description:
+            'Con il piano gratuito puoi aggiungere fino a 5 routine.\n'
+            'Passa a PRO per creare tutte le abitudini che vuoi, '
+            'senza limiti.',
       );
       return;
     }

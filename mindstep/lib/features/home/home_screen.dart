@@ -557,10 +557,11 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   bool _insightShown = false;
 
   // Pedometro
-  int _stepCountBase = 0;
+  int? _stepCountBase; // null = baseline non ancora ricevuto
   int _currentSteps = 0;
-  int _stepsBeforePause = 0; // passi accumulati prima della pausa corrente
+  int _stepsBeforePause = 0;
   StreamSubscription<StepCount>? _stepSub;
+  bool _pedometerGranted = false;
 
   // Voce
   final _speechToText = SpeechToText();
@@ -607,9 +608,13 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   }
 
   Future<void> _initSpeech() async {
+    // Richiedi esplicitamente il permesso microfono prima di inizializzare
+    final micStatus = await Permission.microphone.status;
+    if (micStatus.isDenied) {
+      await Permission.microphone.request();
+    }
     _speechAvailable = await _speechToText.initialize(
       onStatus: (status) {
-        // Riavvia automaticamente dopo silenzio per non interrompere mai la rec
         if (status == 'notListening' && _isRecording && mounted) {
           _restartListening();
         }
@@ -619,15 +624,18 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   }
 
   void _initPedometer() {
+    if (!_pedometerGranted) return; // non avviare senza permesso
     _stepSub?.cancel();
-    _stepCountBase = 0; // reset: il primo evento fissa il nuovo baseline
+    _stepCountBase = null; // null finché non arriva il primo evento
     try {
       _stepSub = Pedometer.stepCountStream.listen(
         (event) {
           if (!mounted) return;
-          if (_stepCountBase == 0) _stepCountBase = event.steps;
-          final delta = event.steps - _stepCountBase;
-          setState(() => _currentSteps = _stepsBeforePause + (delta > 0 ? delta : 0));
+          // Setta il baseline al primo evento ricevuto
+          _stepCountBase ??= event.steps;
+          final delta = event.steps - _stepCountBase!;
+          setState(() =>
+              _currentSteps = _stepsBeforePause + (delta > 0 ? delta : 0));
         },
         onError: (_) {},
         cancelOnError: false,
@@ -657,19 +665,16 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
 
     // Permesso Activity Recognition (contapassi Android 10+)
     final actPerm = await Permission.activityRecognition.request();
-    if (actPerm.isDenied || actPerm.isPermanentlyDenied) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Permesso "Attività fisica" necessario per contare i passi.'),
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
+    _pedometerGranted =
+        actPerm.isGranted || actPerm.isLimited;
+
+    // Permesso microfono (speech-to-text)
+    final micPerm = await Permission.microphone.request();
+    if (micPerm.isGranted && !_speechAvailable) {
+      await _initSpeech(); // ritenta l'init se il permesso era mancante
     }
 
     // Pedometro
-    _stepCountBase = 0;
     _currentSteps = 0;
     _stepsBeforePause = 0;
     _initPedometer();
@@ -811,7 +816,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
             _phase = _SessionPhase.idle;
             _walkSession = null;
             _currentSteps = 0;
-            _stepCountBase = 0;
+            _stepCountBase = null;
             _transcriptController.text = '';
             _accumulatedText = '';
           });
@@ -850,7 +855,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
       _lastSavedTranscript = transcript;
       _walkSession = null;
       _currentSteps = 0;
-      _stepCountBase = 0;
+      _stepCountBase = null;
       _transcriptController.text = '';
       _accumulatedText = '';
       _phase = _SessionPhase.done;
@@ -1071,6 +1076,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
                     stepsProgress: stepsProgress,
                     brainProgress: brainProgress,
                     walkProgress: walkProgress,
+                    isDark: isDark,
                   ),
                 ),
                 // Centro: label + bottone
@@ -1319,12 +1325,15 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     return ElevatedButton(
       onPressed: () {
         if (!isPro) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text(
-                'L\'AI Walking Assistant è disponibile nel piano PRO.'),
-            action:
-                SnackBarAction(label: 'Upgrade', onPressed: () {}),
-          ));
+          _showProFeatureSheet(
+            context,
+            emoji: '🤖',
+            featureName: 'AI Walking Assistant',
+            description:
+                'Chatta con il tuo assistente AI durante la sessione.\n'
+                'Ricevi suggerimenti personalizzati, analisi del percorso '
+                'e consigli per migliorare le tue sessioni.',
+          );
           return;
         }
         context.push('/coach');
@@ -1399,6 +1408,133 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
           elevation: 0,
         ),
       );
+
+  // ── PRO Feature Bottom Sheet ────────────────────────────────────────────────
+  void _showProFeatureSheet(
+    BuildContext context, {
+    required String emoji,
+    required String featureName,
+    required String description,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF0D1E3A) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: AppColors.warning.withOpacity(0.35),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // handle
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(emoji, style: const TextStyle(fontSize: 42)),
+            const SizedBox(height: 12),
+            Text(
+              featureName,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: isDark ? Colors.white : const Color(0xFF1A237E),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(8),
+                border:
+                    Border.all(color: AppColors.warning.withOpacity(0.4)),
+              ),
+              child: const Text(
+                'Funzione PRO',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.warning,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 15,
+                color:
+                    isDark ? Colors.white70 : Colors.grey.shade700,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  context.push('/paywall');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.warning,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  elevation: 0,
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.lock_open_rounded,
+                        size: 18, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      'Sblocca con PRO',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Non adesso',
+                style: TextStyle(
+                  color: isDark ? Colors.white38 : Colors.grey.shade500,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildSessionCtrlButtons(
       BuildContext context, bool isActive, bool isPaused) {
@@ -1795,131 +1931,88 @@ class _ThreeRingPainter extends CustomPainter {
     required this.stepsProgress,
     required this.brainProgress,
     required this.walkProgress,
+    required this.isDark,
   });
 
   final double stepsProgress;
   final double brainProgress;
   final double walkProgress;
+  final bool isDark;
 
-  static const _outerWidth = 18.0;
-  static const _midWidth = 16.0;
-  static const _innerWidth = 14.0;
-  static const _gap = 8.0;
+  // Larghezze più grandi per maggiore visibilità
+  static const _outerW = 26.0;
+  static const _midW = 22.0;
+  static const _innerW = 18.0;
+  static const _gap = 9.0;
+
+  // Colori ben distinti: cyan, arancione, viola
+  static const _cyanTrack   = Color(0xFF00D4FF);
+  static const _orangeTrack = Color(0xFFFF9500);
+  static const _purpleTrack = Color(0xFFAF52DE);
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final outerRadius = size.width / 2 - 4;
-    final midRadius = outerRadius - _outerWidth - _gap;
-    final innerRadius = midRadius - _midWidth - _gap;
+    final outerR = size.width / 2 - 4;
+    final midR   = outerR - _outerW - _gap;
+    final innerR = midR   - _midW   - _gap;
 
-    // Track paint
-    final trackPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+    void _drawRing(
+      double radius,
+      double strokeW,
+      Color trackColor,
+      Color progressColor,
+      double progress,
+    ) {
+      // Track (sfondo semitrasparente)
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeW
+          ..color = trackColor.withOpacity(isDark ? 0.18 : 0.15),
+      );
 
-    // Progress paint
-    final progressPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
+      // Arco di progresso (sempre mostrato, anche se 0)
+      if (progress > 0.005) {
+        canvas.drawArc(
+          Rect.fromCircle(center: center, radius: radius),
+          -pi / 2,
+          2 * pi * progress.clamp(0.0, 1.0),
+          false,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = strokeW
+            ..strokeCap = StrokeCap.round
+            ..color = progressColor,
+        );
+        // Pallino di testa (indica la posizione corrente)
+        final angle = -pi / 2 + 2 * pi * progress.clamp(0.0, 1.0);
+        final dotX = center.dx + radius * cos(angle);
+        final dotY = center.dy + radius * sin(angle);
+        canvas.drawCircle(
+          Offset(dotX, dotY),
+          strokeW / 2 + 1,
+          Paint()..color = progressColor,
+        );
+      }
+    }
 
-    // ── Outer ring: cyan (passi) ────────────────────────────────────
-    trackPaint
-      ..strokeWidth = _outerWidth
-      ..color = const Color(0xFF00BCD4).withOpacity(0.12);
-    canvas.drawCircle(center, outerRadius, trackPaint);
-
-    final outerSweep =
-        stepsProgress > 0 ? 2 * pi * stepsProgress.clamp(0.0, 1.0) : 2 * pi;
-    final outerPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _outerWidth
-      ..strokeCap = StrokeCap.round
-      ..shader = const SweepGradient(
-        startAngle: -pi / 2,
-        endAngle: 3 * pi / 2,
-        colors: [Color(0xFF00E5FF), Color(0xFF00BCD4), Color(0xFF00BCD4)],
-      ).createShader(Rect.fromCircle(center: center, radius: outerRadius));
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: outerRadius),
-      -pi / 2,
-      outerSweep,
-      false,
-      outerPaint,
-    );
-
-    // ── Middle ring: pink/magenta (brain) ───────────────────────────
-    trackPaint
-      ..strokeWidth = _midWidth
-      ..color = const Color(0xFFEC407A).withOpacity(0.12);
-    canvas.drawCircle(center, midRadius, trackPaint);
-
-    final midSweep =
-        brainProgress > 0 ? 2 * pi * brainProgress.clamp(0.0, 1.0) : 2 * pi;
-    final midPaintShader = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _midWidth
-      ..strokeCap = StrokeCap.round
-      ..shader = const SweepGradient(
-        startAngle: -pi / 2,
-        endAngle: 3 * pi / 2,
-        colors: [Color(0xFFFF80AB), Color(0xFFEC407A), Color(0xFFEC407A)],
-      ).createShader(Rect.fromCircle(center: center, radius: midRadius));
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: midRadius),
-      -pi / 2,
-      midSweep,
-      false,
-      midPaintShader,
-    );
-
-    // ── Inner ring: teal (walk) ─────────────────────────────────────
-    trackPaint
-      ..strokeWidth = _innerWidth
-      ..color = const Color(0xFF26C6DA).withOpacity(0.12);
-    canvas.drawCircle(center, innerRadius, trackPaint);
-
-    final innerSweep =
-        walkProgress > 0 ? 2 * pi * walkProgress.clamp(0.0, 1.0) : 2 * pi;
-    final innerPaintShader = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _innerWidth
-      ..strokeCap = StrokeCap.round
-      ..shader = const SweepGradient(
-        startAngle: -pi / 2,
-        endAngle: 3 * pi / 2,
-        colors: [Color(0xFF80DEEA), Color(0xFF26C6DA), Color(0xFF26C6DA)],
-      ).createShader(Rect.fromCircle(center: center, radius: innerRadius));
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: innerRadius),
-      -pi / 2,
-      innerSweep,
-      false,
-      innerPaintShader,
-    );
-
-    // ── Cerchio bianco al centro ────────────────────────────────────
-    final centerRadius = innerRadius - _innerWidth / 2 - 4;
-    canvas.drawCircle(
-      center,
-      centerRadius,
-      Paint()..color = Colors.white,
-    );
-    // Ombra leggera
-    canvas.drawCircle(
-      center,
-      centerRadius,
-      Paint()
-        ..color = const Color(0xFF00BCD4).withOpacity(0.08)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
+    // Outer: CYAN (passi)
+    _drawRing(outerR, _outerW, _cyanTrack, _cyanTrack, stepsProgress);
+    // Middle: ARANCIONE (brainstorm)
+    _drawRing(midR, _midW, _orangeTrack, _orangeTrack, brainProgress);
+    // Inner: VIOLA (cammino)
+    _drawRing(innerR, _innerW, _purpleTrack, _purpleTrack, walkProgress);
   }
 
   @override
   bool shouldRepaint(_ThreeRingPainter old) =>
       old.stepsProgress != stepsProgress ||
       old.brainProgress != brainProgress ||
-      old.walkProgress != walkProgress;
+      old.walkProgress != walkProgress ||
+      old.isDark != isDark;
 }
 
 // ─── Weather Badge (top right, animated) ─────────────────────────────────────

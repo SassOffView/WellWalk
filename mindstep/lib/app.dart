@@ -46,9 +46,9 @@ class AppServices extends ChangeNotifier {
   final QuoteService quotes = QuoteService();
   final WeatherService weather = WeatherService();
 
-  // TESTING MODE: PRO unlocked — change back to freePlan before production release
+  // TESTING MODE: free plan per visualizzare i badge PRO — rimettere proMonthly prima del rilascio
   SubscriptionStatus _subscription = const SubscriptionStatus(
-    plan: SubscriptionPlan.proMonthly,
+    plan: SubscriptionPlan.free,
     purchasedAt: null,
   );
   ThemeMode _themeMode = ThemeMode.system;
