@@ -309,6 +309,22 @@ class LocalDbService {
     );
   }
 
+  /// Restituisce tutte le sessioni di cammino per un dato giorno.
+  Future<List<WalkSession>> loadWalkSessionsForDay(DateTime date) async {
+    final database = await db;
+    final dateKey = _dateKey(date);
+    final rows = await database.query(
+      _tableWalks,
+      where: 'date = ?',
+      whereArgs: [dateKey],
+      orderBy: 'id ASC',
+    );
+    return rows
+        .map((r) =>
+            WalkSession.fromJson(jsonDecode(r['data'] as String) as Map<String, dynamic>))
+        .toList();
+  }
+
   // ── SESSIONS (rituale quotidiano) ───────────────────────────────────
 
   Future<void> saveSession(SessionData session) async {

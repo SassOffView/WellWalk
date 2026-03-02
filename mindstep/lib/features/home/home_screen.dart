@@ -37,7 +37,6 @@ class _HomeScreenState extends State<HomeScreen> {
   DailyQuote? _quote;
   WeatherData? _weather;
   bool _loading = true;
-  bool _sessionDone = false;
   bool _locationPermissionAsked = false;
 
   @override
@@ -51,11 +50,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final results = await Future.wait([
       services.db.loadUserProfile(),
       services.db.loadDayData(DateTime.now()),
-      services.db.hasSessionToday(),
     ]);
     final profile = results[0] as UserProfile?;
     final dayData = results[1] as DayData;
-    final sessionDone = results[2] as bool;
 
     // Controlla badge al caricamento
     await services.badges.checkAllBadgesOnStartup(isPro: services.isPro);
@@ -71,7 +68,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _profile = profile;
         _dayData = dayData;
-        _sessionDone = sessionDone;
         _quote = quote;
         _loading = false;
       });
@@ -183,14 +179,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _reload() async {
     final services = context.read<AppServices>();
-    final results = await Future.wait([
-      services.db.loadDayData(DateTime.now()),
-      services.db.hasSessionToday(),
-    ]);
+    final dayData = await services.db.loadDayData(DateTime.now());
     if (mounted) {
       setState(() {
-        _dayData = results[0] as DayData;
-        _sessionDone = results[1] as bool;
+        _dayData = dayData;
       });
     }
   }
@@ -440,7 +432,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     initialDayData: _dayData,
                     userProfile: _profile,
                     insightForPopup: _insight,
-                    sessionDone: _sessionDone,
                     onSessionComplete: _reload,
                   ),
                 ),
@@ -527,21 +518,19 @@ class _HomeScreenState extends State<HomeScreen> {
 // paused: anelli congelati + "Riprendi / Termina"
 // done:   card completamento + "Esporta Brain-Storming"
 
-enum _SessionPhase { idle, active, paused, done }
+enum _SessionPhase { idle, active, paused }
 
 class _ClaritySessionWidget extends StatefulWidget {
   const _ClaritySessionWidget({
     required this.initialDayData,
     required this.userProfile,
     required this.insightForPopup,
-    required this.sessionDone,
     required this.onSessionComplete,
   });
 
   final DayData? initialDayData;
   final UserProfile? userProfile;
   final DailyInsight? insightForPopup;
-  final bool sessionDone;
   final VoidCallback onSessionComplete;
 
   @override
@@ -549,12 +538,15 @@ class _ClaritySessionWidget extends StatefulWidget {
 }
 
 class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
-  late _SessionPhase _phase;
+  _SessionPhase _phase = _SessionPhase.idle;
 
   // GPS / Walk
   WalkSession? _walkSession;
   bool _requestingPermission = false;
   bool _insightShown = false;
+
+  // Sessioni completate oggi (supporto multi-sessione)
+  List<WalkSession> _todaySessions = [];
 
   // Pedometro
   int? _stepCountBase; // null = baseline non ancora ricevuto
@@ -584,7 +576,6 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   @override
   void initState() {
     super.initState();
-    _phase = widget.sessionDone ? _SessionPhase.done : _SessionPhase.idle;
 
     _services.gps.onSessionUpdate = (session) {
       if (mounted) setState(() => _walkSession = session);
@@ -597,14 +588,13 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     };
 
     _initSpeech();
+    _loadTodaySessions();
   }
 
-  @override
-  void didUpdateWidget(_ClaritySessionWidget old) {
-    super.didUpdateWidget(old);
-    if (widget.sessionDone && !old.sessionDone && _phase == _SessionPhase.idle) {
-      setState(() => _phase = _SessionPhase.done);
-    }
+  Future<void> _loadTodaySessions() async {
+    final sessions =
+        await _services.db.loadWalkSessionsForDay(DateTime.now());
+    if (mounted) setState(() => _todaySessions = sessions);
   }
 
   Future<void> _initSpeech() async {
@@ -858,8 +848,11 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
       _stepCountBase = null;
       _transcriptController.text = '';
       _accumulatedText = '';
-      _phase = _SessionPhase.done;
+      _phase = _SessionPhase.idle;
     });
+
+    // Ricarica le sessioni di oggi dopo il salvataggio
+    await _loadTodaySessions();
 
     widget.onSessionComplete();
 
@@ -955,18 +948,7 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
   // ── Build ─────────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
-    switch (_phase) {
-      case _SessionPhase.idle:
-        return _buildSessionCard(context);
-      case _SessionPhase.active:
-        return _buildSessionCard(context);
-      case _SessionPhase.paused:
-        return _buildSessionCard(context);
-      case _SessionPhase.done:
-        return _buildDone(context);
-    }
-  }
+  Widget build(BuildContext context) => _buildSessionCard(context);
 
   // ── Session Card ──────────────────────────────────────────────────────
 
@@ -977,16 +959,18 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     final walkGoal = (widget.userProfile?.walkMinutesGoal ?? 30).toDouble();
     final brainGoal = (widget.userProfile?.brainstormMinutesGoal ?? 10).toDouble();
 
-    final stepsDisplay = _phase == _SessionPhase.idle
-        ? (widget.initialDayData?.walk?.stepCount ?? 0)
-        : _currentSteps;
-    final stepsProgress = (stepsDisplay / stepGoal).clamp(0.0, 1.0);
-    final walkMin = session?.activeMinutes.toDouble() ?? 0.0;
-    final walkProgress = (walkMin / walkGoal).clamp(0.0, 1.0);
-    final brainProgress = (walkMin / brainGoal).clamp(0.0, 1.0);
-
     final isActive = _phase == _SessionPhase.active;
     final isPaused = _phase == _SessionPhase.paused;
+
+    // Totale giornaliero: sessioni passate + sessione corrente
+    final pastSteps = _todaySessions.fold(0, (s, w) => s + w.stepCount);
+    final pastMinutes = _todaySessions.fold(0, (s, w) => s + w.activeMinutes);
+    final stepsDisplay = pastSteps + (isActive || isPaused ? _currentSteps : 0);
+    final totalMinutes =
+        pastMinutes.toDouble() + (session?.activeMinutes.toDouble() ?? 0.0);
+    final stepsProgress = (stepsDisplay / stepGoal).clamp(0.0, 1.0);
+    final walkProgress = (totalMinutes / walkGoal).clamp(0.0, 1.0);
+    final brainProgress = (totalMinutes / brainGoal).clamp(0.0, 1.0);
 
     return Container(
       decoration: BoxDecoration(
@@ -1280,6 +1264,12 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
           if (isActive || isPaused) ...[
             const SizedBox(height: 10),
             _buildSessionCtrlButtons(context, isActive, isPaused),
+          ],
+
+          // ── Sessioni completate oggi ───────────────────────────────
+          if (_todaySessions.isNotEmpty && !isActive && !isPaused) ...[
+            const SizedBox(height: 16),
+            _buildTodaySessions(context),
           ],
         ],
       ),
@@ -1596,84 +1586,155 @@ class _ClaritySessionWidgetState extends State<_ClaritySessionWidget> {
     );
   }
 
-  // ── Done: card completamento + esporta ────────────────────────────────
+  // ── Sessioni di oggi (storico + totale giornaliero) ──────────────────
 
-  Widget _buildDone(BuildContext context) {
+  Widget _buildTodaySessions(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Totali giornalieri
+    final totalSteps  = _todaySessions.fold(0, (s, w) => s + w.stepCount);
+    final totalDistKm = _todaySessions.fold(0.0, (s, w) => s + w.distanceKm);
+    final totalMins   = _todaySessions.fold(0, (s, w) => s + w.activeMinutes);
+
+    String _fmt(int mins) {
+      if (mins < 60) return '${mins}min';
+      return '${mins ~/ 60}h ${mins % 60}min';
+    }
+
+    final headerColor = isDark ? Colors.white70 : const Color(0xFF1A237E);
+    final subColor    = isDark ? Colors.white38 : Colors.grey.shade500;
+    final cardBg      = isDark
+        ? Colors.white.withOpacity(0.04)
+        : const Color(0xFFF8F9FA);
+    final borderColor = isDark
+        ? Colors.white.withOpacity(0.07)
+        : const Color(0xFFE8EAED);
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-          decoration: BoxDecoration(
-            color: AppColors.cyan.withOpacity(0.07),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.cyan.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.cyan.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: PhosphorIcon(
-                    PhosphorIcons.checkCircle(PhosphorIconsStyle.fill),
-                    color: AppColors.cyan,
-                    size: 22,
-                  ),
-                ),
+        // ── Intestazione sezione
+        Row(
+          children: [
+            Icon(Icons.history_rounded, size: 16, color: AppColors.cyan),
+            const SizedBox(width: 6),
+            Text(
+              'Sessioni di oggi (${_todaySessions.length})',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: headerColor,
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Sessione completata oggi',
-                      style: TextStyle(
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // ── Singole sessioni
+        ...List.generate(_todaySessions.length, (i) {
+          final s = _todaySessions[i];
+          final startHour = s.startedAt.hour.toString().padLeft(2, '0');
+          final startMin  = s.startedAt.minute.toString().padLeft(2, '0');
+          final endHour   = s.completedAt?.hour.toString().padLeft(2, '0') ?? '--';
+          final endMin    = s.completedAt?.minute.toString().padLeft(2, '0') ?? '--';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              children: [
+                // Numero sessione
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: AppColors.cyan.withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${i + 1}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
                         color: AppColors.cyan,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Ottimo lavoro. Torna domani per il prossimo passo.',
-                      style: TextStyle(color: Colors.grey, fontSize: 12),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        if (_lastSavedTranscript.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _exportBrainstorm(context),
-              icon: PhosphorIcon(
-                PhosphorIcons.shareNetwork(PhosphorIconsStyle.fill),
-                size: 18,
-                color: isDark ? const Color(0xFF0A1128) : Colors.white,
-              ),
-              label: Text(
-                'Esporta Brain-Storming',
-                style: TextStyle(
-                  color: isDark ? const Color(0xFF0A1128) : Colors.white,
-                  fontWeight: FontWeight.w700,
+                const SizedBox(width: 10),
+                // Orario
+                Text(
+                  '$startHour:$startMin – $endHour:$endMin',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: subColor,
+                  ),
                 ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isDark ? AppColors.cyanLight : AppColors.cyan,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
-              ),
+                const Spacer(),
+                // Dati: passi | km | durata
+                _SessionChip(
+                    icon: Icons.directions_walk_rounded,
+                    value: '${s.stepCount}',
+                    color: AppColors.cyan),
+                const SizedBox(width: 8),
+                _SessionChip(
+                    icon: Icons.place_rounded,
+                    value: s.formattedDistance,
+                    color: const Color(0xFFEC407A)),
+                const SizedBox(width: 8),
+                _SessionChip(
+                    icon: Icons.timer_outlined,
+                    value: _fmt(s.activeMinutes),
+                    color: const Color(0xFFAF52DE)),
+              ],
+            ),
+          );
+        }),
+
+        // ── Totale giornaliero (solo se >1 sessione)
+        if (_todaySessions.length > 1) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.cyan.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.cyan.withOpacity(0.25)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.bar_chart_rounded,
+                    size: 16, color: AppColors.cyan),
+                const SizedBox(width: 8),
+                Text(
+                  'Totale giornaliero',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.cyan,
+                  ),
+                ),
+                const Spacer(),
+                _SessionChip(
+                    icon: Icons.directions_walk_rounded,
+                    value: '$totalSteps',
+                    color: AppColors.cyan),
+                const SizedBox(width: 8),
+                _SessionChip(
+                    icon: Icons.place_rounded,
+                    value: totalDistKm.toStringAsFixed(2),
+                    color: const Color(0xFFEC407A)),
+                const SizedBox(width: 8),
+                _SessionChip(
+                    icon: Icons.timer_outlined,
+                    value: _fmt(totalMins),
+                    color: const Color(0xFFAF52DE)),
+              ],
             ),
           ),
         ],
@@ -1920,6 +1981,38 @@ class _SummaryStat extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.labelSmall),
         ],
       ),
+    );
+  }
+}
+
+// ─── Session Chip (piccolo badge con icona + valore) ─────────────────────────
+
+class _SessionChip extends StatelessWidget {
+  const _SessionChip({
+    required this.icon,
+    required this.value,
+    required this.color,
+  });
+  final IconData icon;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ],
     );
   }
 }
